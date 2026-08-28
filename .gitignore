@@ -1,0 +1,29 @@
+# CMake and Visual Studio generated files
+/out/
+/build/
+/.vs/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/*.sln
+/*.vcxproj*
+
+# Compiler and linker output
+*.obj
+*.o
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+*.ilk
+
+# User-specific Visual Studio files
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+
+# Runtime files
+/saves/
+*.log
