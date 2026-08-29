@@ -2,6 +2,8 @@
 
 基于 C++17 和 SFML 3 的课程设计项目。
 
+新成员请先阅读 [TEAM_SETUP.md](TEAM_SETUP.md)，里面包含手动下载流程和可直接交给 AI 的环境配置提示词。
+
 ## 开发环境
 
 - Windows 10/11 x64
