@@ -1,0 +1,30 @@
+[
+  {
+    "id": "training_dummy",
+    "name": "训练假人",
+    "maxHealth": 30,
+    "intentDamage": 0,
+    "description": "用于测试卡牌伤害和界面显示的敌人。"
+  },
+  {
+    "id": "cultist",
+    "name": "教徒",
+    "maxHealth": 48,
+    "intentDamage": 6,
+    "description": "第一阶段普通敌人，适合测试敌人攻击回合。"
+  },
+  {
+    "id": "jaw_worm",
+    "name": "颚虫",
+    "maxHealth": 42,
+    "intentDamage": 11,
+    "description": "第一阶段普通敌人，适合测试高伤害意图。"
+  },
+  {
+    "id": "guardian",
+    "name": "守护者",
+    "maxHealth": 120,
+    "intentDamage": 16,
+    "description": "第一阶段 Boss 占位数据，后续可扩展多阶段行为。"
+  }
+]
