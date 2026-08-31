@@ -4,7 +4,7 @@
 
 新成员请先阅读 [TEAM_SETUP.md](TEAM_SETUP.md)，里面包含手动下载流程和可直接交给 AI 的环境配置提示词。
 
-团队开发范围、五人分工、阶段目标和验收标准见 [docs/FIRST_ACT_PROJECT_PLAN.md](docs/FIRST_ACT_PROJECT_PLAN.md)。
+正式接口、命名和成员职责以 [docs/INTERFACE_AND_NAMING.md](docs/INTERFACE_AND_NAMING.md) 为准；开发范围、阶段目标和验收标准见 [docs/FIRST_ACT_PROJECT_PLAN.md](docs/FIRST_ACT_PROJECT_PLAN.md)。
 
 ## 开发环境
 
