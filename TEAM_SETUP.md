@@ -58,11 +58,14 @@ git switch -c feature/card-system
 
 建议的分支名：
 
-- `feature/game-core`
-- `feature/card-system`
-- `feature/combat-system`
-- `feature/battle-ui`
-- `feature/map-system`
+- 组长：`feature/game-core`
+- A（卡牌）：`feature/card-system`
+- B（战斗）：`feature/combat-system`
+- C（UI）：`feature/ui`
+- D（地图）：`feature/map-system`
+- E（事件、资源和数据）：`feature/event-data`
+
+具体接口、目录边界和跨模块调用规则，以 [docs/INTERFACE_AND_NAMING.md](docs/INTERFACE_AND_NAMING.md) 为准。
 
 完成代码并确认能够编译后执行：
 
