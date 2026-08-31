@@ -38,11 +38,10 @@ assets/
 
 ## 2. 正式分工
 
-团队角色按原分工执行，共“组长 + A/B/C/D/E”六个角色：
+团队共有 A/B/C/D/E 五名成员，其中 A 兼任组长：
 
 ```text
-组长：src/app/、src/core/、main.cpp、CMakeLists.txt、整合与存档
-A：src/card/
+A（组长）：src/app/、src/core/、src/card/、main.cpp、CMakeLists.txt、整合与存档
 B：src/combat/
 C：src/ui/
 D：src/map/
@@ -54,8 +53,8 @@ E：src/event/、assets/、数据表、字体、图片、README和说明文档
 - D 负责地图上问号节点的生成、连线和可达性。
 - E 负责进入问号后选择哪个事件、事件选项以及事件效果。
 - C 负责事件文字、图片、按钮和鼠标点击。
-- 组长负责 `MapScene -> EventScene -> MapScene` 的切换和整局状态保存。
-- A 提供添加、删除、升级卡牌需要的接口。
+- A 的核心模块负责 `MapScene -> EventScene -> MapScene` 的切换和整局状态保存。
+- A 的卡牌模块提供添加、删除、升级卡牌需要的接口。
 - B 只在事件转化为战斗时接管战斗规则。
 
 每个人优先只改自己的目录。公共头文件或函数签名修改前必须通知所有使用者。
@@ -63,8 +62,7 @@ E：src/event/、assets/、数据表、字体、图片、README和说明文档
 ## 3. 分支归属
 
 ```text
-组长：feature/game-core
-A：feature/card-system
+A（组长）：feature/game-core、feature/card-system
 B：feature/combat-system
 C：feature/ui
 D：feature/map-system
@@ -244,7 +242,7 @@ public:
 };
 ```
 
-`Unknown` 表示地图上的问号。进入节点后由 E 的事件模块决定具体事件；若问号解析为战斗、商店或宝箱，则由组长切换到对应场景。
+`Unknown` 表示地图上的问号。进入节点后由 E 的事件模块决定具体事件；若问号解析为战斗、商店或宝箱，则由 A 的核心模块切换到对应场景。
 
 ## 9. 事件模块（E）
 
@@ -306,7 +304,7 @@ public:
 
 事件最少先实现：大鱼、世界黏液、发光祭坛、牧师、废弃软泥、金色神像。事件应保存在 `assets/data/events.json`，同一种子和同一访问顺序必须得到相同结果。
 
-## 10. Game 与整局状态（组长）
+## 10. Game 与整局状态（A，兼任组长）
 
 `main.cpp` 只创建并运行 `Game`：
 
