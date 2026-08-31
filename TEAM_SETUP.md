@@ -58,8 +58,7 @@ git switch -c feature/card-system
 
 建议的分支名：
 
-- 组长：`feature/game-core`
-- A（卡牌）：`feature/card-system`
+- A（组长、核心与卡牌）：`feature/game-core`、`feature/card-system`
 - B（战斗）：`feature/combat-system`
 - C（UI）：`feature/ui`
 - D（地图）：`feature/map-system`
