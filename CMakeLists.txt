@@ -6,17 +6,23 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Download the official VS2022 x64 package; no personal install path is needed.
-include(FetchContent)
-FetchContent_Declare(
-    sfml_binary
-    URL https://github.com/SFML/SFML/releases/download/3.0.1/SFML-3.0.1-windows-vc17-64-bit.zip
-    URL_HASH SHA256=2da4b95bab898686e06c6dd7f2333bcaad572cb70deb96c41d52321df90af48b
-    DOWNLOAD_EXTRACT_TIMESTAMP ON
-)
-FetchContent_MakeAvailable(sfml_binary)
+# 优先复用仓库旁边已下载的 VS2022 x64 版 SFML 3.0.1。
+set(LOCAL_SFML_DIR "${CMAKE_CURRENT_SOURCE_DIR}/SFML-3.0.1-vc17/SFML-3.0.1")
 
-set(SFML_DIR "${sfml_binary_SOURCE_DIR}/lib/cmake/SFML")
+if(EXISTS "${LOCAL_SFML_DIR}/lib/cmake/SFML/SFMLConfig.cmake")
+    set(SFML_DIR "${LOCAL_SFML_DIR}/lib/cmake/SFML")
+else()
+    include(FetchContent)
+    FetchContent_Declare(
+        sfml_binary
+        URL https://github.com/SFML/SFML/releases/download/3.0.1/SFML-3.0.1-windows-vc17-64-bit.zip
+        URL_HASH SHA256=2da4b95bab898686e06c6dd7f2333bcaad572cb70deb96c41d52321df90af48b
+        DOWNLOAD_EXTRACT_TIMESTAMP ON
+    )
+    FetchContent_MakeAvailable(sfml_binary)
+
+    set(SFML_DIR "${sfml_binary_SOURCE_DIR}/lib/cmake/SFML")
+endif()
 find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics)
 
 add_executable(SlayTheSpire
