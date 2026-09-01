@@ -36,21 +36,19 @@ std::vector<MapNode> MapGenerator::generateMap(int rowCount)
             {
                 node.type = MapNodeType::Boss;
             }
+            else if (row == rowCount - 2)
+            {
+                node.type = MapNodeType::Rest;
+            }
             else
             {
-                std::uniform_int_distribution<int> typeDistribution(0, 4);
+                std::uniform_int_distribution<int> typeDistribution(0, 2);
                 switch (typeDistribution(randomEngine))
                 {
                 case 0:
                     node.type = MapNodeType::Battle;
                     break;
                 case 1:
-                    node.type = MapNodeType::Elite;
-                    break;
-                case 2:
-                    node.type = MapNodeType::Rest;
-                    break;
-                case 3:
                     node.type = MapNodeType::Shop;
                     break;
                 default:

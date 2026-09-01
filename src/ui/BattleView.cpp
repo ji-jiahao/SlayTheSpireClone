@@ -53,11 +53,16 @@ void drawBar(sf::RenderWindow& window, sf::Vector2f position, sf::Vector2f size,
 }
 } // namespace
 
-BattleView::BattleView() : font_(nullptr) {}
+BattleView::BattleView() : font_(nullptr), background_(nullptr) {}
 
 void BattleView::setFont(const sf::Font& font)
 {
     font_ = &font;
+}
+
+void BattleView::setBackground(const sf::Texture& texture)
+{
+    background_ = &texture;
 }
 
 sf::FloatRect BattleView::getEndTurnButtonBounds() const
@@ -115,14 +120,52 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
 
 void BattleView::draw(sf::RenderWindow& window, const CombatSystem& combat) const
 {
-    sf::RectangleShape background({kWindowWidth, kWindowHeight});
-    background.setFillColor(sf::Color(35, 38, 42));
-    window.draw(background);
+    if (background_ != nullptr)
+    {
+        sf::Sprite background(*background_);
+        background.setScale({kWindowWidth / background_->getSize().x,
+                             kWindowHeight / background_->getSize().y});
+        window.draw(background);
+        sf::RectangleShape veil({kWindowWidth, kWindowHeight});
+        veil.setFillColor(sf::Color(12, 13, 16, 85));
+        window.draw(veil);
+    }
+    else
+    {
+        sf::RectangleShape background({kWindowWidth, kWindowHeight});
+        background.setFillColor(sf::Color(35, 38, 42));
+        window.draw(background);
+    }
+
+    sf::CircleShape playerBody(68.0f, 24);
+    playerBody.setPosition({155.0f, 245.0f});
+    playerBody.setFillColor(sf::Color(128, 48, 42, 225));
+    playerBody.setOutlineColor(sf::Color(224, 174, 104));
+    playerBody.setOutlineThickness(4.0f);
+    window.draw(playerBody);
+
+    sf::CircleShape enemyBody(75.0f, 7);
+    enemyBody.setPosition({950.0f, 235.0f});
+    enemyBody.setFillColor(sf::Color(58, 50, 70, 235));
+    enemyBody.setOutlineColor(sf::Color(183, 95, 84));
+    enemyBody.setOutlineThickness(4.0f);
+    window.draw(enemyBody);
 
     drawPlayerPanel(window, combat.getPlayer());
     drawEnemyPanel(window, combat.getEnemy());
     drawHand(window, combat.getHandCards());
     drawEndTurnButton(window);
+
+    if (font_ != nullptr)
+    {
+        sf::Text piles = makeText(*font_,
+            "抽牌 " + std::to_string(combat.getDeck().getDrawPile().size()) +
+            "   弃牌 " + std::to_string(combat.getDeck().getDiscardPile().size()) +
+            "   消耗 " + std::to_string(combat.getDeck().getExhaustPile().size()),
+            17, sf::Color(225, 220, 210));
+        piles.setPosition({35.0f, 675.0f});
+        window.draw(piles);
+    }
 }
 
 void BattleView::drawPlayerPanel(sf::RenderWindow& window, const Player& player) const

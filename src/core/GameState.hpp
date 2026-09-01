@@ -1,5 +1,7 @@
 #pragma once
 
+#include "card/Card.hpp"
+
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -10,12 +12,37 @@ struct GameState
     int maxHealth = 80;
     int gold = 99;
     int currentNodeId = -1;
-    unsigned int seed = 0;
-    std::vector<std::string> deckIds{"strike", "strike", "strike", "strike", "strike",
-                                     "defend", "defend", "defend", "defend", "bash"};
+    unsigned int seed = 20260901;
+    std::vector<CardInstance> deck;
     std::vector<std::string> relicIds{"burning_blood"};
     std::vector<std::string> potionIds;
     std::vector<std::string> visitedEventIds;
+
+    GameState()
+    {
+        reset();
+    }
+
+    void reset()
+    {
+        currentHealth = 80;
+        maxHealth = 80;
+        gold = 99;
+        currentNodeId = -1;
+        deck.clear();
+        for (int index = 0; index < 5; ++index)
+        {
+            deck.push_back({"strike", false});
+        }
+        for (int index = 0; index < 4; ++index)
+        {
+            deck.push_back({"defend", false});
+        }
+        deck.push_back({"bash", false});
+        relicIds = {"burning_blood"};
+        potionIds.clear();
+        visitedEventIds.clear();
+    }
 
     int heal(int amount)
     {
@@ -26,30 +53,17 @@ struct GameState
 
     void loseHealth(int amount)
     {
-        if (amount <= 0)
-        {
-            return;
-        }
-
-        currentHealth = std::max(0, currentHealth - amount);
+        currentHealth = std::max(0, currentHealth - std::max(0, amount));
     }
 
     void gainGold(int amount)
     {
-        if (amount > 0)
-        {
-            gold += amount;
-        }
+        gold += std::max(0, amount);
     }
 
     bool spendGold(int amount)
     {
-        if (amount <= 0)
-        {
-            return true;
-        }
-
-        if (gold < amount)
+        if (amount < 0 || amount > gold)
         {
             return false;
         }
@@ -88,37 +102,71 @@ struct GameState
     {
         if (!cardId.empty())
         {
-            deckIds.push_back(cardId);
+            deck.push_back({cardId, false});
         }
+    }
+
+    bool removeFirstCard(const std::string& cardId)
+    {
+        return removeCard(cardId);
     }
 
     bool removeCard(const std::string& cardId)
     {
-        auto it = std::find(deckIds.begin(), deckIds.end(), cardId);
-        if (it == deckIds.end())
+        const auto found =
+            std::find_if(deck.begin(), deck.end(),
+                         [&cardId](const CardInstance& card)
+                         {
+                             return card.definitionId == cardId;
+                         });
+        if (found == deck.end())
         {
             return false;
         }
 
-        deckIds.erase(it);
+        deck.erase(found);
+        return true;
+    }
+
+    bool upgradeFirstCard()
+    {
+        const auto found =
+            std::find_if(deck.begin(), deck.end(),
+                         [](const CardInstance& card)
+                         {
+                             return !card.upgraded;
+                         });
+        if (found == deck.end())
+        {
+            return false;
+        }
+
+        found->upgraded = true;
         return true;
     }
 
     bool upgradeCard(const std::string& cardId)
     {
-        auto it = std::find(deckIds.begin(), deckIds.end(), cardId);
-        if (it == deckIds.end())
+        const auto found =
+            std::find_if(deck.begin(), deck.end(),
+                         [&cardId](const CardInstance& card)
+                         {
+                             return card.definitionId == cardId && !card.upgraded;
+                         });
+        if (found == deck.end())
         {
             return false;
         }
 
-        if (!it->empty() && it->back() == '+')
-        {
-            return false;
-        }
-
-        *it = cardId + "+";
+        found->upgraded = true;
         return true;
+    }
+
+    void increaseMaxHealth(int amount)
+    {
+        const int increase = std::max(0, amount);
+        maxHealth += increase;
+        currentHealth += increase;
     }
 };
 

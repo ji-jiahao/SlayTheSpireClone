@@ -76,6 +76,16 @@ int main()
         assert(combat.getResult() == BattleResult::Victory);
     }
 
+    {
+        CombatSystem combat;
+        combat.startBattle(80, 0, CardDatabase::createStarterDeck(),
+                           EncounterDefinition{}, 10, 1, 1, 2, 80);
+        assert(combat.getPlayer().getBlock() == 10);
+        assert(combat.getPlayer().getStrength() == 1);
+        assert(combat.getPlayer().getCurrentEnergy() == 4);
+        assert(combat.getHandCards().size() == 7);
+    }
+
     std::cout << "Combat tests passed.\n";
     return 0;
 }

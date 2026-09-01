@@ -1,5 +1,6 @@
 #include "app/Game.hpp"
 
+#include "card/CardDatabase.hpp"
 #include "map/MapGenerator.hpp"
 
 #include <array>
@@ -15,6 +16,7 @@ namespace
 constexpr unsigned int kWindowWidth = 1280;
 constexpr unsigned int kWindowHeight = 720;
 constexpr const char* kEventDataPath = "assets/data/events.json";
+constexpr const char* kMenuBackgroundPath = "assets/images/menu/start_screen.png";
 constexpr const char* kUniversityEventId = "university_choice";
 constexpr const char* kNailongEventId = "sacred_nailong";
 
@@ -30,7 +32,7 @@ std::string mapNodeTypeName(MapNodeType type)
     case MapNodeType::Battle:
         return "战斗";
     case MapNodeType::Elite:
-        return "精英";
+        return "首领";
     case MapNodeType::Rest:
         return "休息";
     case MapNodeType::Shop:
@@ -51,7 +53,7 @@ sf::Color mapNodeColor(MapNodeType type)
     case MapNodeType::Battle:
         return sf::Color(178, 76, 66);
     case MapNodeType::Elite:
-        return sf::Color(185, 94, 190);
+        return sf::Color(230, 96, 54);
     case MapNodeType::Rest:
         return sf::Color(65, 150, 94);
     case MapNodeType::Shop:
@@ -65,14 +67,28 @@ sf::Color mapNodeColor(MapNodeType type)
     return sf::Color(160, 160, 160);
 }
 
-sf::Color mapLineColor(bool active)
+sf::Color mapLineColor()
 {
-    if (active)
+    return sf::Color(116, 120, 126);
+}
+
+void drawThickLine(sf::RenderWindow& window, sf::Vector2f start,
+                   sf::Vector2f end)
+{
+    const sf::Vector2f delta = end - start;
+    const float length = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+    if (length <= 0.0f)
     {
-        return sf::Color(225, 198, 118);
+        return;
     }
 
-    return sf::Color(82, 86, 94);
+    constexpr float kLineThickness = 8.0f;
+    sf::RectangleShape line({length, kLineThickness});
+    line.setOrigin({0.0f, kLineThickness / 2.0f});
+    line.setPosition(start);
+    line.setRotation(sf::radians(std::atan2(delta.y, delta.x)));
+    line.setFillColor(mapLineColor());
+    window.draw(line);
 }
 
 std::optional<MapNode> findNodeById(const std::vector<MapNode>& nodes, int nodeId)
@@ -95,7 +111,7 @@ Game::Game()
     : window(sf::VideoMode({kWindowWidth, kWindowHeight}), "Slay the Spire Clone"),
       fontLoaded(false),
       eventSystem(eventDatabase),
-      scene(SceneType::Map),
+      scene(SceneType::Menu),
       handledResult(BattleResult::Active),
       relicHealing(0)
 {
@@ -105,12 +121,23 @@ Game::Game()
     if (fontLoaded)
     {
         battleView.setFont(font);
+        mainMenuView.setFont(font);
     }
 
     if (!eventView.loadFont("assets/fonts/simhei.ttf"))
     {
         lastError = eventView.getLastError();
         std::cerr << lastError << std::endl;
+    }
+
+    menuBackgroundLoaded = menuBackgroundTexture.loadFromFile(kMenuBackgroundPath);
+    if (menuBackgroundLoaded)
+    {
+        mainMenuView.setBackground(menuBackgroundTexture);
+    }
+    else
+    {
+        std::cerr << "无法加载开始界面背景: " << kMenuBackgroundPath << std::endl;
     }
 
     if (!eventDatabase.loadFromFile(kEventDataPath))
@@ -125,16 +152,7 @@ Game::Game()
         std::cerr << lastError << std::endl;
     }
 
-    MapGenerator generator;
-    mapNodes = generator.generateMap(6);
-    if (!mapNodes.empty())
-    {
-        mapNodes.front().type = MapNodeType::Event;
-    }
-    if (mapNodes.size() > 1)
-    {
-        mapNodes[1].type = MapNodeType::Battle;
-    }
+    window.setTitle("东南苦行塔 - 主菜单");
 }
 
 void Game::run()
@@ -172,6 +190,12 @@ void Game::handleWindowEvent(const sf::Event& event)
             return;
         }
 
+        if (scene == SceneType::Menu && key->code == sf::Keyboard::Key::Enter)
+        {
+            startNewRun();
+            return;
+        }
+
         if (scene == SceneType::Battle && key->code == sf::Keyboard::Key::R &&
             combat.getResult() != BattleResult::Active)
         {
@@ -186,7 +210,11 @@ void Game::handleWindowEvent(const sf::Event& event)
 
     if (const auto* mouseMoved = event.getIf<sf::Event::MouseMoved>())
     {
-        if (scene == SceneType::Event)
+        if (scene == SceneType::Menu)
+        {
+            mainMenuView.handleMouseMove(window.mapPixelToCoords(mouseMoved->position));
+        }
+        else if (scene == SceneType::Event)
         {
             eventView.handleMouseMove(window.mapPixelToCoords(mouseMoved->position),
                                       eventSystem);
@@ -202,7 +230,11 @@ void Game::handleWindowEvent(const sf::Event& event)
         }
 
         const sf::Vector2f mousePosition = window.mapPixelToCoords(mouse->position);
-        if (scene == SceneType::Map)
+        if (scene == SceneType::Menu)
+        {
+            handleMenuAction(mainMenuView.handleMouseClick(mousePosition));
+        }
+        else if (scene == SceneType::Map)
         {
             handleMapMouseClick(mousePosition);
         }
@@ -249,7 +281,7 @@ void Game::handleMapMouseClick(sf::Vector2f mousePosition)
                 return;
             }
 
-            if (!state.hasVisitedEvent(kNailongEventId) &&
+        if (!state.hasVisitedEvent(kNailongEventId) &&
                 startEvent(kNailongEventId))
             {
                 return;
@@ -259,8 +291,7 @@ void Game::handleMapMouseClick(sf::Vector2f mousePosition)
             return;
         }
 
-        if (node->type == MapNodeType::Battle || node->type == MapNodeType::Elite ||
-            node->type == MapNodeType::Boss)
+        if (node->type == MapNodeType::Battle || node->type == MapNodeType::Boss)
         {
             startBattle();
             return;
@@ -304,6 +335,9 @@ void Game::render()
 
     switch (scene)
     {
+    case SceneType::Menu:
+        drawMenuScene();
+        break;
     case SceneType::Map:
         drawMapScene();
         break;
@@ -322,13 +356,58 @@ void Game::render()
     window.display();
 }
 
-void Game::startBattle()
+void Game::handleMenuAction(MainMenuView::Action action)
 {
-    relicSystem.beginBattle();
+    switch (action)
+    {
+    case MainMenuView::Action::Start:
+        startNewRun();
+        break;
+    case MainMenuView::Action::Load:
+        startNewRun();
+        statusMessage = "读档功能暂未接入，已开始新游戏。";
+        break;
+    case MainMenuView::Action::None:
+        break;
+    }
+}
+
+void Game::startNewRun()
+{
+    state.reset();
+    relicSystem = RelicSystem();
+    eventSystem.setDatabase(eventDatabase);
     handledResult = BattleResult::Active;
     relicHealing = 0;
     statusMessage.clear();
-    combat.startBattle(state.currentHealth);
+    lastError.clear();
+
+    MapGenerator generator;
+    mapNodes = generator.generateMap(6);
+    if (!mapNodes.empty())
+    {
+        mapNodes.front().type = MapNodeType::Event;
+    }
+    if (mapNodes.size() > 1)
+    {
+        mapNodes[1].type = MapNodeType::Battle;
+    }
+
+    scene = SceneType::Map;
+    state.currentNodeId = -1;
+    window.setTitle("东南苦行塔 - 地图");
+}
+
+void Game::startBattle()
+{
+    relicSystem.beginBattle();
+    const RelicBattleStartModifiers modifiers = relicSystem.applyBattleStart(state);
+    handledResult = BattleResult::Active;
+    relicHealing = 0;
+    statusMessage.clear();
+    combat.startBattle(state.currentHealth, state.seed, buildCombatDeck(),
+                       EncounterDefinition{}, modifiers.block, modifiers.strength,
+                       modifiers.energy, modifiers.drawCards, state.maxHealth);
     scene = SceneType::Battle;
     window.setTitle("Slay the Spire Clone - 战斗");
 }
@@ -394,6 +473,11 @@ void Game::handleBattleResult()
     }
 }
 
+void Game::drawMenuScene()
+{
+    mainMenuView.draw(window);
+}
+
 void Game::drawMapScene()
 {
     sf::RectangleShape background({static_cast<float>(kWindowWidth),
@@ -455,17 +539,7 @@ void Game::drawMapScene()
                 continue;
             }
 
-            const sf::Vector2f targetCenter = targetIt->bounds.getCenter();
-            const bool activeLine = node.id == state.currentNodeId ||
-                                    state.currentNodeId == -1 ||
-                                    std::find(node.nextNodeIds.begin(), node.nextNodeIds.end(),
-                                              state.currentNodeId) != node.nextNodeIds.end();
-            sf::VertexArray line(sf::PrimitiveType::Lines, 2);
-            line[0].position = center;
-            line[0].color = mapLineColor(activeLine);
-            line[1].position = targetCenter;
-            line[1].color = mapLineColor(activeLine);
-            window.draw(line);
+            drawThickLine(window, center, targetIt->bounds.getCenter());
         }
     }
 
@@ -607,7 +681,7 @@ bool Game::loadMapIconTextures()
 
     const std::array<TextureLoadItem, 5> items = {{
         {&battleNodeTexture, "assets/images/map/node_normal.png"},
-        {&eliteNodeTexture, "assets/images/map/node_elite.png"},
+        {&bossNodeTexture, "assets/images/map/node_boss.png"},
         {&restNodeTexture, "assets/images/map/node_rest.png"},
         {&shopNodeTexture, "assets/images/map/node_shop.png"},
         {&eventNodeTexture, "assets/images/map/node_event.png"},
@@ -638,7 +712,7 @@ const sf::Texture* Game::getMapNodeTexture(MapNodeType type) const
         return &battleNodeTexture;
     case MapNodeType::Elite:
     case MapNodeType::Boss:
-        return &eliteNodeTexture;
+        return &bossNodeTexture;
     case MapNodeType::Rest:
         return &restNodeTexture;
     case MapNodeType::Shop:
@@ -648,6 +722,24 @@ const sf::Texture* Game::getMapNodeTexture(MapNodeType type) const
     }
 
     return nullptr;
+}
+
+std::vector<Card> Game::buildCombatDeck() const
+{
+    std::vector<Card> result;
+    result.reserve(state.deck.size());
+    for (const CardInstance& instance : state.deck)
+    {
+        try
+        {
+            result.push_back(CardDatabase::createFromInstance(instance));
+        }
+        catch (const std::invalid_argument&)
+        {
+        }
+    }
+
+    return result.empty() ? CardDatabase::createStarterDeck() : result;
 }
 
 bool Game::isMapNodeSelectable(const MapNode& node) const
@@ -681,9 +773,9 @@ std::vector<Game::MapNodeButton> Game::layoutMapNodes() const
         maxRow = std::max(maxRow, node.row);
     }
 
-    constexpr float nodeSize = 86.0f;
-    constexpr float top = 260.0f;
-    constexpr float bottom = 640.0f;
+    constexpr float nodeSize = 72.0f;
+    constexpr float top = 150.0f;
+    constexpr float bottom = 625.0f;
     const float rowGap = maxRow == 0 ? 0.0f : (bottom - top) / static_cast<float>(maxRow);
 
     for (const MapNode& node : mapNodes)
@@ -697,9 +789,9 @@ std::vector<Game::MapNodeButton> Game::layoutMapNodes() const
             }
         }
 
-        const float totalWidth = static_cast<float>(rowNodeCount - 1) * 180.0f;
+        const float totalWidth = static_cast<float>(rowNodeCount - 1) * 250.0f;
         const float x = static_cast<float>(kWindowWidth) / 2.0f - totalWidth / 2.0f +
-                        static_cast<float>(node.column) * 180.0f - nodeSize / 2.0f;
+                        static_cast<float>(node.column) * 250.0f - nodeSize / 2.0f;
         const float y = bottom - static_cast<float>(node.row) * rowGap - nodeSize / 2.0f;
         buttons.push_back({node.id, sf::FloatRect({x, y}, {nodeSize, nodeSize})});
     }

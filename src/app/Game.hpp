@@ -8,6 +8,7 @@
 #include "relic/RelicSystem.hpp"
 #include "ui/BattleView.hpp"
 #include "ui/EventView.hpp"
+#include "ui/MainMenuView.hpp"
 
 #include <SFML/Graphics.hpp>
 
@@ -23,6 +24,7 @@ public:
 private:
     enum class SceneType
     {
+        Menu,
         Map,
         Event,
         Battle,
@@ -36,20 +38,24 @@ private:
     };
 
     void handleWindowEvent(const sf::Event& event);
+    void handleMenuAction(MainMenuView::Action action);
     void handleMapMouseClick(sf::Vector2f mousePosition);
     void update(float deltaSeconds);
     void render();
+    void startNewRun();
     void startBattle();
     bool startEvent(const std::string& eventId);
     void showMap();
     void showGameOver();
     void handleBattleResult();
+    void drawMenuScene();
     void drawMapScene();
     void drawResultOverlay();
     void drawGameOver();
     bool loadMapIconTextures();
     const sf::Texture* getMapNodeTexture(MapNodeType type) const;
     bool isMapNodeSelectable(const MapNode& node) const;
+    std::vector<Card> buildCombatDeck() const;
     std::vector<MapNodeButton> layoutMapNodes() const;
     sf::Text makeText(const std::string& text, unsigned int size,
                       sf::Color color) const;
@@ -59,6 +65,7 @@ private:
     sf::Font font;
     bool fontLoaded;
     BattleView battleView;
+    MainMenuView mainMenuView;
     CombatSystem combat;
     GameState state;
     RelicSystem relicSystem;
@@ -73,9 +80,11 @@ private:
     std::string lastError;
     std::vector<MapNode> mapNodes;
     sf::Texture battleNodeTexture;
-    sf::Texture eliteNodeTexture;
+    sf::Texture bossNodeTexture;
     sf::Texture restNodeTexture;
     sf::Texture shopNodeTexture;
     sf::Texture eventNodeTexture;
+    sf::Texture menuBackgroundTexture;
     bool mapIconsLoaded = false;
+    bool menuBackgroundLoaded = false;
 };

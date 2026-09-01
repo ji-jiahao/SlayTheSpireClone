@@ -53,6 +53,7 @@ add_library(relic_system STATIC
 )
 
 target_include_directories(relic_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(relic_system PUBLIC card_system)
 
 add_library(event_system STATIC
     src/event/EventDatabase.cpp
@@ -72,6 +73,8 @@ add_library(ui STATIC
     src/ui/CardView.cpp
     src/ui/BattleView.cpp
     src/ui/EventView.cpp
+    src/ui/MainMenuView.cpp
+    src/ui/UiHelpers.cpp
 )
 
 target_include_directories(ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)

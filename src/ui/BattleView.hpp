@@ -16,6 +16,7 @@ public:
     BattleView();
 
     void setFont(const sf::Font& font);
+    void setBackground(const sf::Texture& texture);
     void handleMouseClick(sf::Vector2f mousePosition, CombatSystem& combat);
     void draw(sf::RenderWindow& window, const CombatSystem& combat) const;
 
@@ -36,4 +37,5 @@ private:
     void drawEndTurnButton(sf::RenderWindow& window) const;
 
     const sf::Font* font_;
+    const sf::Texture* background_;
 };
