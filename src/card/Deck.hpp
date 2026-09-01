@@ -15,11 +15,13 @@ public:
     void shuffle(std::uint32_t seed);
     std::vector<Card> drawCards(std::size_t count);
     bool discardCard(std::size_t handIndex);
+    bool exhaustCard(std::size_t handIndex);
     void discardHand();
 
     const std::vector<Card>& getDrawPile() const;
     const std::vector<Card>& getHand() const;
     const std::vector<Card>& getDiscardPile() const;
+    const std::vector<Card>& getExhaustPile() const;
 
 private:
     void reshuffleDiscardIntoDraw();
@@ -27,5 +29,6 @@ private:
     std::vector<Card> drawPile;
     std::vector<Card> hand;
     std::vector<Card> discardPile;
+    std::vector<Card> exhaustPile;
     std::mt19937 randomEngine;
 };
