@@ -9,18 +9,24 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # 源码含 UTF-8 中文注释与界面文字，MSVC 需要 /utf-8 才能正确解析。
 add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 
-# Download the official VS2022 x64 package; no personal install path is needed.
-include(FetchContent)
-FetchContent_Declare(
-    sfml_binary
-    URL https://github.com/SFML/SFML/releases/download/3.0.1/SFML-3.0.1-windows-vc17-64-bit.zip
-    URL_HASH SHA256=2da4b95bab898686e06c6dd7f2333bcaad572cb70deb96c41d52321df90af48b
-    DOWNLOAD_EXTRACT_TIMESTAMP ON
-)
-FetchContent_MakeAvailable(sfml_binary)
+# 优先复用仓库旁边已下载的 VS2022 x64 版 SFML 3.0.1。
+set(LOCAL_SFML_DIR "${CMAKE_CURRENT_SOURCE_DIR}/SFML-3.0.1-vc17/SFML-3.0.1")
 
-set(SFML_DIR "${sfml_binary_SOURCE_DIR}/lib/cmake/SFML")
-find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics)
+if(EXISTS "${LOCAL_SFML_DIR}/lib/cmake/SFML/SFMLConfig.cmake")
+    set(SFML_DIR "${LOCAL_SFML_DIR}/lib/cmake/SFML")
+else()
+    include(FetchContent)
+    FetchContent_Declare(
+        sfml_binary
+        URL https://github.com/SFML/SFML/releases/download/3.0.1/SFML-3.0.1-windows-vc17-64-bit.zip
+        URL_HASH SHA256=2da4b95bab898686e06c6dd7f2333bcaad572cb70deb96c41d52321df90af48b
+        DOWNLOAD_EXTRACT_TIMESTAMP ON
+    )
+    FetchContent_MakeAvailable(sfml_binary)
+
+    set(SFML_DIR "${sfml_binary_SOURCE_DIR}/lib/cmake/SFML")
+endif()
+find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics Audio)
 
 add_library(card_system STATIC
     src/card/Card.cpp
@@ -38,16 +44,17 @@ target_include_directories(card_system PUBLIC
 # 等对应模块合并到 main 后，把这两个 .cpp 追加到下方列表即可。
 add_library(ui STATIC
     src/ui/CardView.cpp
+    src/ui/EventView.cpp
 )
 
 target_include_directories(ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ui PUBLIC card_system SFML::Graphics)
+target_link_libraries(ui PUBLIC card_system SFML::Graphics SFML::Audio)
 
 add_executable(SlayTheSpire
     src/main.cpp
 )
 
-target_link_libraries(SlayTheSpire PRIVATE card_system ui SFML::Graphics)
+target_link_libraries(SlayTheSpire PRIVATE card_system ui SFML::Graphics SFML::Audio)
 
 option(BUILD_TESTING "Build the card module tests" ON)
 enable_testing()
@@ -67,6 +74,9 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 $<TARGET_RUNTIME_DLLS:SlayTheSpire>
                 $<TARGET_FILE_DIR:SlayTheSpire>
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+                "$<TARGET_FILE_DIR:SlayTheSpire>/assets"
         COMMAND_EXPAND_LISTS
     )
 endif()
