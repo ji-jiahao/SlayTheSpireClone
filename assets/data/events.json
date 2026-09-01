@@ -1,0 +1,263 @@
+[
+  {
+    "id": "university_choice",
+    "title": "哪个是更好的大学？",
+    "description": "哪个是更好的大学？",
+    "background": "assets/images/event/dungeon_background.png",
+    "act": 1,
+    "weight": 8,
+    "states": [
+      {
+        "title": "哪个是更好的大学？",
+        "text": "",
+        "left_image": "assets/images/event/southeast_university_logo.png",
+        "right_image": "assets/images/event/nanjing_university_logo.png",
+        "sound": "assets/sounds/laoda_theme.ogg",
+        "overlay_alpha": 150
+      },
+      {
+        "text": "车大win，你感受到了六朝遗韵，获得100金币并回复20点血量",
+        "sound": "assets/sounds/southeast_university_anthem.mp3",
+        "overlay_alpha": 150,
+        "close_on_click": 1
+      },
+      {
+        "text": "车大lose，你不是一个合格的车兵，丢弃所有金币",
+        "sound": "assets/sounds/detective_theme.mp3",
+        "overlay_alpha": 150,
+        "close_on_click": 1
+      }
+    ],
+    "options": [
+      {
+        "text": "东南大学",
+        "state": 0,
+        "next_state": 1,
+        "closes_event": 0,
+        "effects": [
+          {
+            "type": "gain_gold",
+            "value": 100
+          },
+          {
+            "type": "heal",
+            "value": 20
+          }
+        ]
+      },
+      {
+        "text": "南京大学",
+        "state": 0,
+        "next_state": 2,
+        "closes_event": 0,
+        "effects": [
+          {
+            "type": "lose_all_gold"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sacred_nailong",
+    "title": "神圣的不明生物",
+    "description": "………………",
+    "background": "assets/images/event/dungeon_background.png",
+    "act": 1,
+    "weight": 10,
+    "states": [
+      {
+        "text": "………………",
+        "image": "assets/images/event/nailong_serious.png"
+      },
+      {
+        "text": "哈哈哈哈哈哈哈哈",
+        "image": "assets/images/event/nailong_laugh.png",
+        "sound": "assets/sounds/nailong_laugh.mp3"
+      }
+    ],
+    "options": [
+      {
+        "text": "看着这个黄色的不明生物，你觉得很神圣",
+        "state": 0,
+        "next_state": 1,
+        "closes_event": 0,
+        "effects": []
+      },
+      {
+        "text": "艰难绷住",
+        "state": 1,
+        "effects": []
+      },
+      {
+        "text": "蚌埠住了",
+        "state": 1,
+        "effects": [
+          {
+            "type": "lose_health",
+            "value": 10
+          },
+          {
+            "type": "gain_gold",
+            "value": 50
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "big_fish",
+    "title": "大鱼",
+    "description": "一条古怪的大鱼从水面下探出头来，似乎在等你回应。",
+    "act": 1,
+    "weight": 20,
+    "options": [
+      {
+        "text": "吃下蛋糕，恢复生命",
+        "effects": [
+          {
+            "type": "heal",
+            "value": 20
+          }
+        ]
+      },
+      {
+        "text": "礼貌拒绝",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "id": "world_slime",
+    "title": "世界黏液",
+    "description": "一团巨大的黏液缓慢蠕动，看上去像某种无定形的生物。",
+    "act": 1,
+    "weight": 15,
+    "options": [
+      {
+        "text": "踩碎它，获得金币",
+        "effects": [
+          {
+            "type": "gain_gold",
+            "value": 35
+          }
+        ]
+      },
+      {
+        "text": "绕开离去",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "id": "glowing_altar",
+    "title": "发光祭坛",
+    "description": "一座裂纹密布的祭坛在黑暗中发出幽光。",
+    "act": 1,
+    "weight": 12,
+    "options": [
+      {
+        "text": "献出生命换取财富",
+        "effects": [
+          {
+            "type": "lose_health",
+            "value": 6
+          },
+          {
+            "type": "gain_gold",
+            "value": 90
+          }
+        ]
+      },
+      {
+        "text": "站远一点",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "id": "priest",
+    "title": "牧师",
+    "description": "一名神情平静的牧师站在路边，似乎愿意给你提供帮助。",
+    "act": 1,
+    "weight": 18,
+    "options": [
+      {
+        "text": "接受祈祷，恢复生命",
+        "effects": [
+          {
+            "type": "heal",
+            "value": 12
+          }
+        ]
+      },
+      {
+        "text": "留下 50 金币",
+        "effects": [
+          {
+            "type": "lose_gold",
+            "value": 50
+          },
+          {
+            "type": "heal",
+            "value": 20
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "abandoned_slime",
+    "title": "废弃软泥",
+    "description": "一滩失去活性的软泥堆在地上，里面似乎藏着什么东西。",
+    "act": 1,
+    "weight": 10,
+    "options": [
+      {
+        "text": "翻找黏液，付出一点生命",
+        "effects": [
+          {
+            "type": "lose_health",
+            "value": 4
+          },
+          {
+            "type": "gain_gold",
+            "value": 20
+          }
+        ]
+      },
+      {
+        "text": "不碰它",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "id": "golden_idol",
+    "title": "金色神像",
+    "description": "一尊沉重的金色神像立在路中央，表面布满裂痕。",
+    "act": 1,
+    "weight": 8,
+    "options": [
+      {
+        "text": "向神像祈愿，升级一张打击",
+        "effects": [
+          {
+            "type": "upgrade_card",
+            "value": 1,
+            "parameter": "strike"
+          }
+        ]
+      },
+      {
+        "text": "带着它离开",
+        "effects": [
+          {
+            "type": "gain_gold",
+            "value": 120
+          }
+        ]
+      }
+    ]
+  }
+]

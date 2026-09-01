@@ -1,30 +1,124 @@
 #include "app/Game.hpp"
 
+#include "map/MapGenerator.hpp"
+
 #include <array>
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
+#include <iostream>
+#include <optional>
 
 namespace
 {
 constexpr unsigned int kWindowWidth = 1280;
 constexpr unsigned int kWindowHeight = 720;
+constexpr const char* kEventDataPath = "assets/data/events.json";
+constexpr const char* kUniversityEventId = "university_choice";
+constexpr const char* kNailongEventId = "sacred_nailong";
 
 sf::String toSfString(const std::string& text)
 {
     return sf::String::fromUtf8(text.begin(), text.end());
 }
+
+std::string mapNodeTypeName(MapNodeType type)
+{
+    switch (type)
+    {
+    case MapNodeType::Battle:
+        return "战斗";
+    case MapNodeType::Elite:
+        return "精英";
+    case MapNodeType::Rest:
+        return "休息";
+    case MapNodeType::Shop:
+        return "商店";
+    case MapNodeType::Event:
+        return "事件";
+    case MapNodeType::Boss:
+        return "首领";
+    }
+
+    return "未知";
 }
+
+sf::Color mapNodeColor(MapNodeType type)
+{
+    switch (type)
+    {
+    case MapNodeType::Battle:
+        return sf::Color(178, 76, 66);
+    case MapNodeType::Elite:
+        return sf::Color(185, 94, 190);
+    case MapNodeType::Rest:
+        return sf::Color(65, 150, 94);
+    case MapNodeType::Shop:
+        return sf::Color(216, 175, 72);
+    case MapNodeType::Event:
+        return sf::Color(82, 145, 205);
+    case MapNodeType::Boss:
+        return sf::Color(230, 96, 54);
+    }
+
+    return sf::Color(160, 160, 160);
+}
+
+std::optional<MapNode> findNodeById(const std::vector<MapNode>& nodes, int nodeId)
+{
+    const auto it = std::find_if(nodes.begin(), nodes.end(),
+                                 [nodeId](const MapNode& node)
+                                 {
+                                     return node.id == nodeId;
+                                 });
+    if (it == nodes.end())
+    {
+        return std::nullopt;
+    }
+
+    return *it;
+}
+} // namespace
 
 Game::Game()
     : window(sf::VideoMode({kWindowWidth, kWindowHeight}), "Slay the Spire Clone"),
-      fontLoaded(false), handledResult(BattleResult::Active), relicHealing(0)
+      fontLoaded(false),
+      eventSystem(eventDatabase),
+      scene(SceneType::Map),
+      handledResult(BattleResult::Active),
+      relicHealing(0)
 {
     fontLoaded = loadFont();
     window.setFramerateLimit(60);
+
     if (fontLoaded)
     {
         battleView.setFont(font);
     }
-    startBattle();
+
+    if (!eventView.loadFont("assets/fonts/simhei.ttf"))
+    {
+        lastError = eventView.getLastError();
+        std::cerr << lastError << std::endl;
+    }
+
+    if (!eventDatabase.loadFromFile(kEventDataPath))
+    {
+        lastError = "加载事件数据库失败: " + eventDatabase.getLastError();
+        std::cerr << lastError << std::endl;
+    }
+
+    MapGenerator generator;
+    mapNodes = generator.generateMap(6);
+    if (!mapNodes.empty())
+    {
+        mapNodes.front().type = MapNodeType::Event;
+        state.currentNodeId = mapNodes.front().id;
+    }
+    if (mapNodes.size() > 1)
+    {
+        mapNodes[1].type = MapNodeType::Battle;
+    }
 }
 
 void Game::run()
@@ -33,40 +127,177 @@ void Game::run()
     {
         while (const auto event = window.pollEvent())
         {
-            if (event->is<sf::Event::Closed>())
-            {
-                window.close();
-            }
-            else if (const auto* mouse = event->getIf<sf::Event::MouseButtonPressed>())
-            {
-                if (mouse->button == sf::Mouse::Button::Left &&
-                    combat.getResult() == BattleResult::Active)
-                {
-                    battleView.handleMouseClick(window.mapPixelToCoords(mouse->position), combat);
-                    handleBattleResult();
-                }
-            }
-            else if (const auto* key = event->getIf<sf::Event::KeyPressed>())
-            {
-                if (key->code == sf::Keyboard::Key::R &&
-                    combat.getResult() != BattleResult::Active)
-                {
-                    if (combat.getResult() == BattleResult::Defeat)
-                    {
-                        state.currentHealth = state.maxHealth;
-                    }
-                    startBattle();
-                }
-            }
+            handleWindowEvent(*event);
         }
 
+        update(clock.restart().asSeconds());
+        render();
+    }
+}
+
+void Game::handleWindowEvent(const sf::Event& event)
+{
+    if (event.is<sf::Event::Closed>())
+    {
+        window.close();
+        return;
+    }
+
+    if (const auto* key = event.getIf<sf::Event::KeyPressed>())
+    {
+        if (scene == SceneType::Event && eventView.handleAnyInput(eventSystem, state))
+        {
+            return;
+        }
+
+        if (key->code == sf::Keyboard::Key::Escape)
+        {
+            window.close();
+            return;
+        }
+
+        if (scene == SceneType::Battle && key->code == sf::Keyboard::Key::R &&
+            combat.getResult() != BattleResult::Active)
+        {
+            if (combat.getResult() == BattleResult::Defeat)
+            {
+                state.currentHealth = state.maxHealth;
+            }
+            showMap();
+            return;
+        }
+    }
+
+    if (const auto* mouseMoved = event.getIf<sf::Event::MouseMoved>())
+    {
+        if (scene == SceneType::Event)
+        {
+            eventView.handleMouseMove(window.mapPixelToCoords(mouseMoved->position),
+                                      eventSystem);
+        }
+        return;
+    }
+
+    if (const auto* mouse = event.getIf<sf::Event::MouseButtonPressed>())
+    {
+        if (mouse->button != sf::Mouse::Button::Left)
+        {
+            return;
+        }
+
+        const sf::Vector2f mousePosition = window.mapPixelToCoords(mouse->position);
+        if (scene == SceneType::Map)
+        {
+            handleMapMouseClick(mousePosition);
+        }
+        else if (scene == SceneType::Event)
+        {
+            eventView.handleMouseClick(mousePosition, eventSystem, state);
+        }
+        else if (scene == SceneType::Battle &&
+                 combat.getResult() == BattleResult::Active)
+        {
+            battleView.handleMouseClick(mousePosition, combat);
+            handleBattleResult();
+        }
+    }
+}
+
+void Game::handleMapMouseClick(sf::Vector2f mousePosition)
+{
+    for (const MapNodeButton& button : layoutMapNodes())
+    {
+        if (!button.bounds.contains(mousePosition))
+        {
+            continue;
+        }
+
+        const std::optional<MapNode> node = findNodeById(mapNodes, button.nodeId);
+        if (!node.has_value())
+        {
+            return;
+        }
+
+        state.currentNodeId = node->id;
+        if (node->type == MapNodeType::Event)
+        {
+            if (!state.hasVisitedEvent(kUniversityEventId) &&
+                startEvent(kUniversityEventId))
+            {
+                return;
+            }
+
+            if (!state.hasVisitedEvent(kNailongEventId) &&
+                startEvent(kNailongEventId))
+            {
+                return;
+            }
+
+            statusMessage = "本层事件已经触发过，选择战斗节点继续测试。";
+            return;
+        }
+
+        if (node->type == MapNodeType::Battle || node->type == MapNodeType::Elite ||
+            node->type == MapNodeType::Boss)
+        {
+            startBattle();
+            return;
+        }
+
+        statusMessage = mapNodeTypeName(node->type) + "节点暂未接入，已保留为地图占位。";
+        return;
+    }
+}
+
+void Game::update(float deltaSeconds)
+{
+    if (scene == SceneType::Event)
+    {
+        eventView.update(deltaSeconds);
+        if (eventView.shouldReturnToMap())
+        {
+            eventView.clearReturnToMapRequest();
+            if (state.isDead())
+            {
+                showGameOver();
+            }
+            else
+            {
+                showMap();
+            }
+        }
+        return;
+    }
+
+    if (scene == SceneType::Battle)
+    {
         combat.update();
         handleBattleResult();
-        window.clear(sf::Color(35, 38, 42));
+    }
+}
+
+void Game::render()
+{
+    window.clear(sf::Color(35, 38, 42));
+
+    switch (scene)
+    {
+    case SceneType::Map:
+        drawMapScene();
+        break;
+    case SceneType::Event:
+        eventView.draw(window, eventSystem, state);
+        break;
+    case SceneType::Battle:
         battleView.draw(window, combat);
         drawResultOverlay();
-        window.display();
+        break;
+    case SceneType::GameOver:
+        drawGameOver();
+        break;
     }
+
+    window.display();
 }
 
 void Game::startBattle()
@@ -76,6 +307,47 @@ void Game::startBattle()
     relicHealing = 0;
     statusMessage.clear();
     combat.startBattle(state.currentHealth);
+    scene = SceneType::Battle;
+    window.setTitle("Slay the Spire Clone - 战斗");
+}
+
+bool Game::startEvent(const std::string& eventId)
+{
+    if (!eventDatabase.hasEvent(eventId))
+    {
+        statusMessage = "找不到事件: " + eventId;
+        return false;
+    }
+
+    if (!eventSystem.startEvent(eventId))
+    {
+        statusMessage = eventSystem.getLastError();
+        return false;
+    }
+
+    if (!eventView.prepareEvent(eventSystem.getCurrentEvent()))
+    {
+        statusMessage = eventView.getLastError();
+        return false;
+    }
+
+    eventView.enterCurrentState(eventSystem);
+    scene = SceneType::Event;
+    window.setTitle("Slay the Spire Clone - 事件");
+    return true;
+}
+
+void Game::showMap()
+{
+    scene = SceneType::Map;
+    statusMessage = "已返回地图。";
+    window.setTitle("Slay the Spire Clone - 地图");
+}
+
+void Game::showGameOver()
+{
+    scene = SceneType::GameOver;
+    window.setTitle("Slay the Spire Clone - 游戏结束");
 }
 
 void Game::handleBattleResult()
@@ -95,7 +367,107 @@ void Game::handleBattleResult()
     }
     else
     {
+        state.currentHealth = 0;
         statusMessage = "战斗失败";
+    }
+}
+
+void Game::drawMapScene()
+{
+    sf::RectangleShape background({static_cast<float>(kWindowWidth),
+                                   static_cast<float>(kWindowHeight)});
+    background.setFillColor(sf::Color(28, 31, 37));
+    window.draw(background);
+
+    if (!fontLoaded)
+    {
+        return;
+    }
+
+    sf::Text title = makeText("地图测试入口", 42, sf::Color(235, 229, 207));
+    title.setPosition({70.0f, 48.0f});
+    window.draw(title);
+
+    sf::Text hint = makeText("点击事件节点进入大学/奶龙事件，点击战斗节点进入最新主线战斗。",
+                             22, sf::Color(210, 199, 174));
+    hint.setPosition({70.0f, 108.0f});
+    window.draw(hint);
+
+    sf::Text status = makeText("当前生命: " + std::to_string(state.currentHealth) +
+                                   "/" + std::to_string(state.maxHealth) +
+                                   "    金币: " + std::to_string(state.gold),
+                               24, sf::Color(242, 210, 105));
+    status.setPosition({70.0f, 154.0f});
+    window.draw(status);
+
+    if (!statusMessage.empty())
+    {
+        sf::Text message = makeText(statusMessage, 20, sf::Color(224, 218, 200));
+        message.setPosition({70.0f, 196.0f});
+        window.draw(message);
+    }
+
+    const std::vector<MapNodeButton> buttons = layoutMapNodes();
+    for (const MapNode& node : mapNodes)
+    {
+        const auto buttonIt = std::find_if(buttons.begin(), buttons.end(),
+                                           [&node](const MapNodeButton& button)
+                                           {
+                                               return button.nodeId == node.id;
+                                           });
+        if (buttonIt == buttons.end())
+        {
+            continue;
+        }
+
+        const sf::Vector2f center = buttonIt->bounds.getCenter();
+        for (int targetId : node.nextNodeIds)
+        {
+            const auto targetIt = std::find_if(buttons.begin(), buttons.end(),
+                                               [targetId](const MapNodeButton& button)
+                                               {
+                                                   return button.nodeId == targetId;
+                                               });
+            if (targetIt == buttons.end())
+            {
+                continue;
+            }
+
+            const sf::Vector2f targetCenter = targetIt->bounds.getCenter();
+            sf::VertexArray line(sf::PrimitiveType::Lines, 2);
+            line[0].position = center;
+            line[0].color = sf::Color(92, 100, 112);
+            line[1].position = targetCenter;
+            line[1].color = sf::Color(92, 100, 112);
+            window.draw(line);
+        }
+    }
+
+    for (const MapNodeButton& button : buttons)
+    {
+        const std::optional<MapNode> node = findNodeById(mapNodes, button.nodeId);
+        if (!node.has_value())
+        {
+            continue;
+        }
+
+        sf::CircleShape circle(button.bounds.size.x / 2.0f, 48);
+        circle.setPosition(button.bounds.position);
+        circle.setFillColor(mapNodeColor(node->type));
+        circle.setOutlineThickness(node->id == state.currentNodeId ? 5.0f : 3.0f);
+        circle.setOutlineColor(sf::Color(238, 221, 170));
+        window.draw(circle);
+
+        sf::Text label = makeText(mapNodeTypeName(node->type), 16,
+                                  sf::Color(26, 24, 22));
+        const sf::FloatRect bounds = label.getLocalBounds();
+        label.setPosition({button.bounds.position.x +
+                               (button.bounds.size.x - bounds.size.x) / 2.0f -
+                               bounds.position.x,
+                           button.bounds.position.y +
+                               (button.bounds.size.y - bounds.size.y) / 2.0f -
+                               bounds.position.y});
+        window.draw(label);
     }
 }
 
@@ -106,8 +478,8 @@ void Game::drawResultOverlay()
         return;
     }
 
-    sf::RectangleShape overlay({560.0f, 210.0f});
-    overlay.setPosition({360.0f, 230.0f});
+    sf::RectangleShape overlay({560.0f, 230.0f});
+    overlay.setPosition({360.0f, 220.0f});
     overlay.setFillColor(sf::Color(22, 24, 28, 235));
     overlay.setOutlineColor(sf::Color(230, 174, 72));
     overlay.setOutlineThickness(3.0f);
@@ -118,31 +490,99 @@ void Game::drawResultOverlay()
         return;
     }
 
-    sf::Text title(font, toSfString(statusMessage), 40);
-    title.setFillColor(sf::Color(245, 220, 150));
-    title.setPosition({510.0f, 260.0f});
+    sf::Text title = makeText(statusMessage, 40, sf::Color(245, 220, 150));
+    title.setPosition({510.0f, 250.0f});
     window.draw(title);
 
     std::string detail;
     if (combat.getResult() == BattleResult::Victory)
     {
-        detail = "燃烧之血回复 " + std::to_string(relicHealing) + " 点生命  当前生命 " +
-                 std::to_string(state.currentHealth) + "/" + std::to_string(state.maxHealth);
+        detail = "燃烧之血回复 " + std::to_string(relicHealing) +
+                 " 点生命  当前生命 " + std::to_string(state.currentHealth) +
+                 "/" + std::to_string(state.maxHealth);
     }
     else
     {
         detail = "本次挑战结束";
     }
 
-    sf::Text detailText(font, toSfString(detail), 22);
-    detailText.setFillColor(sf::Color(235, 229, 207));
-    detailText.setPosition({430.0f, 335.0f});
+    sf::Text detailText = makeText(detail, 22, sf::Color(235, 229, 207));
+    detailText.setPosition({430.0f, 325.0f});
     window.draw(detailText);
 
-    sf::Text restart(font, toSfString("按 R 重新战斗"), 22);
-    restart.setFillColor(sf::Color(210, 210, 210));
+    sf::Text restart = makeText("按 R 返回地图", 22, sf::Color(210, 210, 210));
     restart.setPosition({545.0f, 390.0f});
     window.draw(restart);
+}
+
+void Game::drawGameOver()
+{
+    sf::RectangleShape background({static_cast<float>(kWindowWidth),
+                                   static_cast<float>(kWindowHeight)});
+    background.setFillColor(sf::Color(34, 18, 20));
+    window.draw(background);
+
+    if (!fontLoaded)
+    {
+        return;
+    }
+
+    sf::Text title = makeText("游戏结束", 54, sf::Color(238, 221, 210));
+    title.setPosition({80.0f, 80.0f});
+    window.draw(title);
+
+    sf::Text message = makeText("生命值降为 0，已进入正常死亡流程占位界面。",
+                                26, sf::Color(222, 183, 166));
+    message.setPosition({80.0f, 170.0f});
+    window.draw(message);
+}
+
+std::vector<Game::MapNodeButton> Game::layoutMapNodes() const
+{
+    std::vector<MapNodeButton> buttons;
+    if (mapNodes.empty())
+    {
+        return buttons;
+    }
+
+    int maxRow = 0;
+    for (const MapNode& node : mapNodes)
+    {
+        maxRow = std::max(maxRow, node.row);
+    }
+
+    constexpr float nodeSize = 74.0f;
+    constexpr float top = 270.0f;
+    constexpr float bottom = 650.0f;
+    const float rowGap = maxRow == 0 ? 0.0f : (bottom - top) / static_cast<float>(maxRow);
+
+    for (const MapNode& node : mapNodes)
+    {
+        int rowNodeCount = 0;
+        for (const MapNode& other : mapNodes)
+        {
+            if (other.row == node.row)
+            {
+                ++rowNodeCount;
+            }
+        }
+
+        const float totalWidth = static_cast<float>(rowNodeCount - 1) * 180.0f;
+        const float x = static_cast<float>(kWindowWidth) / 2.0f - totalWidth / 2.0f +
+                        static_cast<float>(node.column) * 180.0f - nodeSize / 2.0f;
+        const float y = top + static_cast<float>(node.row) * rowGap - nodeSize / 2.0f;
+        buttons.push_back({node.id, sf::FloatRect({x, y}, {nodeSize, nodeSize})});
+    }
+
+    return buttons;
+}
+
+sf::Text Game::makeText(const std::string& text, unsigned int size,
+                        sf::Color color) const
+{
+    sf::Text drawableText(font, toSfString(text), size);
+    drawableText.setFillColor(color);
+    return drawableText;
 }
 
 bool Game::loadFont()
@@ -159,5 +599,6 @@ bool Game::loadFont()
             return true;
         }
     }
+
     return false;
 }

@@ -2,12 +2,17 @@
 
 #include "combat/CombatSystem.hpp"
 #include "core/GameState.hpp"
+#include "event/EventDatabase.hpp"
+#include "event/EventSystem.hpp"
+#include "map/MapNode.hpp"
 #include "relic/RelicSystem.hpp"
 #include "ui/BattleView.hpp"
+#include "ui/EventView.hpp"
 
 #include <SFML/Graphics.hpp>
 
 #include <string>
+#include <vector>
 
 class Game
 {
@@ -16,9 +21,35 @@ public:
     void run();
 
 private:
+    enum class SceneType
+    {
+        Map,
+        Event,
+        Battle,
+        GameOver
+    };
+
+    struct MapNodeButton
+    {
+        int nodeId = -1;
+        sf::FloatRect bounds;
+    };
+
+    void handleWindowEvent(const sf::Event& event);
+    void handleMapMouseClick(sf::Vector2f mousePosition);
+    void update(float deltaSeconds);
+    void render();
     void startBattle();
+    bool startEvent(const std::string& eventId);
+    void showMap();
+    void showGameOver();
     void handleBattleResult();
+    void drawMapScene();
     void drawResultOverlay();
+    void drawGameOver();
+    std::vector<MapNodeButton> layoutMapNodes() const;
+    sf::Text makeText(const std::string& text, unsigned int size,
+                      sf::Color color) const;
     bool loadFont();
 
     sf::RenderWindow window;
@@ -28,7 +59,14 @@ private:
     CombatSystem combat;
     GameState state;
     RelicSystem relicSystem;
+    EventDatabase eventDatabase;
+    EventSystem eventSystem;
+    EventView eventView;
+    sf::Clock clock;
+    SceneType scene;
     BattleResult handledResult;
     int relicHealing;
     std::string statusMessage;
+    std::string lastError;
+    std::vector<MapNode> mapNodes;
 };

@@ -26,7 +26,7 @@ else()
 
     set(SFML_DIR "${sfml_binary_SOURCE_DIR}/lib/cmake/SFML")
 endif()
-find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics)
+find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics Audio)
 
 add_library(card_system STATIC
     src/card/Card.cpp
@@ -54,20 +54,43 @@ add_library(relic_system STATIC
 
 target_include_directories(relic_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+add_library(event_system STATIC
+    src/event/EventDatabase.cpp
+    src/event/EventSystem.cpp
+)
+
+target_include_directories(event_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+add_library(map_system STATIC
+    src/map/MapNode.cpp
+    src/map/MapGenerator.cpp
+)
+
+target_include_directories(map_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 add_library(ui STATIC
     src/ui/CardView.cpp
     src/ui/BattleView.cpp
+    src/ui/EventView.cpp
 )
 
 target_include_directories(ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ui PUBLIC card_system combat_system SFML::Graphics)
+target_link_libraries(ui PUBLIC card_system combat_system event_system SFML::Graphics SFML::Audio)
 
 add_executable(SlayTheSpire
     src/main.cpp
     src/app/Game.cpp
 )
 
-target_link_libraries(SlayTheSpire PRIVATE combat_system relic_system ui SFML::Graphics)
+target_link_libraries(SlayTheSpire PRIVATE
+    combat_system
+    relic_system
+    ui
+    event_system
+    map_system
+    SFML::Graphics
+    SFML::Audio
+)
 
 option(BUILD_TESTING "Build project tests" ON)
 enable_testing()
@@ -92,7 +115,6 @@ if(BUILD_TESTING)
     add_test(NAME RelicTests COMMAND RelicTests)
 endif()
 
-# Copy exactly the runtime DLLs required by the executable.
 if(WIN32)
     add_custom_command(TARGET SlayTheSpire POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -100,11 +122,10 @@ if(WIN32)
                 $<TARGET_FILE_DIR:SlayTheSpire>
         COMMAND_EXPAND_LISTS
     )
-    add_custom_command(TARGET SlayTheSpire POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-                "$<TARGET_FILE_DIR:SlayTheSpire>/assets/fonts"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/simhei.ttf"
-                "$<TARGET_FILE_DIR:SlayTheSpire>/assets/fonts/simhei.ttf"
-    )
 endif()
+
+add_custom_command(TARGET SlayTheSpire POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:SlayTheSpire>/assets"
+)
