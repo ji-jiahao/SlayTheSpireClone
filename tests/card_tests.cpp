@@ -70,6 +70,13 @@ void testIroncladPool()
             "Whirlwind must use X cost");
     require(CardDatabase::createById("bash").upgradedEffects.size() == 2,
             "Bash upgrade must preserve both effects");
+    require(CardDatabase::createById("iron_wave").name == "铁斩波",
+            "Iron Wave must use the Chinese name 铁斩波");
+    require(CardDatabase::createById("iron_wave").damage == 5 &&
+                CardDatabase::createById("iron_wave").block == 5,
+            "Iron Wave must deal 5 damage and grant 5 block");
+    require(CardDatabase::createById("clothesline").name == "金刚臂",
+            "Clothesline must not be named 铁斩波");
 }
 
 void testStarterDeck()
