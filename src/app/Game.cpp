@@ -520,7 +520,7 @@ void Game::handleDeckClick(sf::Vector2f position)
         const std::size_t row = index / columns;
         const std::size_t column = index % columns;
         const sf::FloatRect bounds{{startX + column * (cardWidth + gap),
-                                    118.0f + row * (cardHeight + 22.0f)},
+                                    105.0f + row * (cardHeight + 22.0f)},
                                    {cardWidth, cardHeight}};
         if (bounds.contains(position) && state_.upgradeCardAt(index))
         {
@@ -567,9 +567,9 @@ std::vector<RoomAction> Game::currentActions() const
                 {"饮用泉水", "回复 12 点生命"}, {"离开", "不发生任何事"}};
     case SceneType::Rest:
         return {{"休息", "回复最大生命的 30%"},
-                {"锻造", "升级牌组中第一张未升级卡牌"}};
+                {"锻造", "从牌库中选择一张未升级的牌"}};
     case SceneType::Shop:
-        return {{"购买铁波", "50 金币", state_.gold >= 50},
+        return {{"购买铁斩波", "50 金币", state_.gold >= 50},
                 {"移除一张打击", "75 金币", state_.gold >= 75},
                 {"离开", "保留金币"}};
     case SceneType::Treasure:
