@@ -588,6 +588,7 @@ EventDefinition parseEvent(const JsonValue& value)
     event.id = requireString(value, "id");
     event.title = requireString(value, "title");
     event.description = requireString(value, "description");
+    event.backgroundPath = optionalString(value, "background");
     event.imagePath = optionalString(value, "image");
     event.soundPath = optionalString(value, "sound");
     event.act = optionalInt(value, "act", 1);

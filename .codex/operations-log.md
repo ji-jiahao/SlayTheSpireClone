@@ -46,3 +46,13 @@
 - 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --build --preset debug`
 - 已执行：启动 `out/build/windows-x64/Debug/SlayTheSpire.exe` 3 秒，进程保持运行后结束测试进程。
 - 已检查：`sfml-audio-d-3.dll`、事件图片、字体、音频和 `events.json` 已复制到 exe 旁边。
+
+## 反馈修正 - 奶龙事件图片顺序、背景和选项后果
+
+时间：2026-09-01 13:42:54 +08:00
+
+- 已按反馈改为本地修改，不直接推送远端分支。
+- 已交换奶龙事件图片顺序：初始阶段显示端坐图片，点击后切换为大笑图片。
+- 已新增事件背景资源：`assets/images/event/dungeon_background.png`。
+- 已给选项绘制选择后果：负面效果红色，正面效果绿色，无数值变化灰色。
+- 已重新执行 Debug 构建和短启动验证，均通过。

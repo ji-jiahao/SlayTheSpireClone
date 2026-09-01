@@ -44,6 +44,7 @@ struct EventDefinition
     std::string id;
     std::string title;
     std::string description;
+    std::string backgroundPath;
     std::string imagePath;
     std::string soundPath;
     int act = 1;

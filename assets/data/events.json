@@ -3,16 +3,17 @@
     "id": "sacred_nailong",
     "title": "神圣的不明生物",
     "description": "………………",
+    "background": "assets/images/event/dungeon_background.png",
     "act": 1,
     "weight": 10,
     "states": [
       {
         "text": "………………",
-        "image": "assets/images/event/nailong_laugh.png"
+        "image": "assets/images/event/nailong_serious.png"
       },
       {
         "text": "哈哈哈哈哈哈哈哈",
-        "image": "assets/images/event/nailong_serious.png",
+        "image": "assets/images/event/nailong_laugh.png",
         "sound": "assets/sounds/nailong_laugh.mp3"
       }
     ],

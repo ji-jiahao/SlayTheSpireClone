@@ -44,6 +44,8 @@ private:
 
     const EventDefinition* preparedEvent_ = nullptr;
     sf::Font font_;
+    sf::Texture backgroundTexture_;
+    bool hasBackgroundTexture_ = false;
     std::unordered_map<std::string, sf::Texture> textures_;
     sf::Music sound_;
     std::size_t activeStateIndex_ = 0;

@@ -6,6 +6,12 @@
 
 namespace
 {
+struct EffectPreview
+{
+    std::string text;
+    sf::Color color;
+};
+
 sf::String toSfString(const std::string& text)
 {
     return sf::String::fromUtf8(text.begin(), text.end());
@@ -77,6 +83,58 @@ sf::Color buttonFillColor(bool hovered)
     return sf::Color(230, 174, 72);
 }
 
+std::vector<EffectPreview> buildEffectPreviews(const EventOption& option)
+{
+    std::vector<EffectPreview> previews;
+    for (const EventEffect& effect : option.effects)
+    {
+        switch (effect.type)
+        {
+        case EventEffectType::Heal:
+            previews.push_back({"+" + std::to_string(effect.value) + " HP",
+                                sf::Color(43, 145, 72)});
+            break;
+        case EventEffectType::LoseHealth:
+            previews.push_back({"-" + std::to_string(effect.value) + " HP",
+                                sf::Color(190, 54, 47)});
+            break;
+        case EventEffectType::GainGold:
+            previews.push_back({"+" + std::to_string(effect.value) + " Gold",
+                                sf::Color(43, 145, 72)});
+            break;
+        case EventEffectType::LoseGold:
+            previews.push_back({"-" + std::to_string(effect.value) + " Gold",
+                                sf::Color(190, 54, 47)});
+            break;
+        case EventEffectType::AddCard:
+            previews.push_back({"获得卡牌", sf::Color(43, 145, 72)});
+            break;
+        case EventEffectType::RemoveCard:
+            previews.push_back({"删除卡牌", sf::Color(190, 54, 47)});
+            break;
+        case EventEffectType::UpgradeCard:
+            previews.push_back({"升级卡牌", sf::Color(43, 145, 72)});
+            break;
+        case EventEffectType::None:
+            break;
+        }
+    }
+
+    if (previews.empty())
+    {
+        if (!option.closesEvent && option.nextState >= 0)
+        {
+            previews.push_back({"继续事件", sf::Color(78, 78, 78)});
+        }
+        else
+        {
+            previews.push_back({"无数值变化", sf::Color(78, 78, 78)});
+        }
+    }
+
+    return previews;
+}
+
 std::string buildStatusText(const GameState& gameState)
 {
     std::ostringstream out;
@@ -107,6 +165,7 @@ bool EventView::prepareEvent(const EventDefinition& eventDefinition)
 {
     preparedEvent_ = &eventDefinition;
     textures_.clear();
+    hasBackgroundTexture_ = false;
     floatingTexts_.clear();
     feedbackText_.clear();
     feedbackTimer_ = 0.0f;
@@ -117,6 +176,17 @@ bool EventView::prepareEvent(const EventDefinition& eventDefinition)
     returnToMap_ = false;
     lastError_.clear();
     stopSound();
+
+    if (!eventDefinition.backgroundPath.empty())
+    {
+        if (!backgroundTexture_.loadFromFile(eventDefinition.backgroundPath))
+        {
+            lastError_ = "无法加载事件背景: " + eventDefinition.backgroundPath;
+            return false;
+        }
+
+        hasBackgroundTexture_ = true;
+    }
 
     for (const EventState& state : eventDefinition.states)
     {
@@ -255,18 +325,36 @@ void EventView::draw(sf::RenderWindow& window, const EventSystem& eventSystem,
     const float width = static_cast<float>(size.x);
     const float height = static_cast<float>(size.y);
 
-    sf::RectangleShape background({width, height});
-    background.setFillColor(sf::Color(25, 25, 29));
-    window.draw(background);
-
-    for (int index = 0; index < 9; ++index)
+    if (hasBackgroundTexture_)
     {
-        sf::RectangleShape stone({width, 68.0f});
-        stone.setPosition({0.0f, static_cast<float>(index) * 82.0f});
-        const std::uint8_t shade = static_cast<std::uint8_t>(31 + (index % 2) * 9);
-        stone.setFillColor(sf::Color(shade, shade, shade + 5));
-        window.draw(stone);
+        sf::Sprite background(backgroundTexture_);
+        const sf::FloatRect bounds = background.getLocalBounds();
+        const float scale = std::max(width / bounds.size.x, height / bounds.size.y);
+        background.setScale({scale, scale});
+        background.setPosition({(width - bounds.size.x * scale) / 2.0f,
+                                (height - bounds.size.y * scale) / 2.0f});
+        window.draw(background);
     }
+    else
+    {
+        sf::RectangleShape background({width, height});
+        background.setFillColor(sf::Color(25, 25, 29));
+        window.draw(background);
+
+        for (int index = 0; index < 9; ++index)
+        {
+            sf::RectangleShape stone({width, 68.0f});
+            stone.setPosition({0.0f, static_cast<float>(index) * 82.0f});
+            const std::uint8_t shade =
+                static_cast<std::uint8_t>(31 + (index % 2) * 9);
+            stone.setFillColor(sf::Color(shade, shade, shade + 5));
+            window.draw(stone);
+        }
+    }
+
+    sf::RectangleShape dimLayer({width, height});
+    dimLayer.setFillColor(sf::Color(0, 0, 0, 70));
+    window.draw(dimLayer);
 
     const EventState& state = getCurrentState(eventSystem);
     const auto textureIt = textures_.find(state.imagePath);
@@ -304,15 +392,21 @@ void EventView::draw(sf::RenderWindow& window, const EventSystem& eventSystem,
 
         const EventOption& option =
             eventSystem.getCurrentEvent().options[button.optionIndex];
-        sf::Text label = makeText(font_, option.text, 24, sf::Color(24, 19, 14));
+        sf::Text label = makeText(font_, option.text, 23, sf::Color(24, 19, 14));
         const sf::FloatRect textBounds = label.getLocalBounds();
-        label.setPosition({button.bounds.position.x +
-                               (button.bounds.size.x - textBounds.size.x) / 2.0f -
-                               textBounds.position.x,
-                           button.bounds.position.y +
-                               (button.bounds.size.y - textBounds.size.y) / 2.0f -
-                               textBounds.position.y - 2.0f});
+        label.setPosition({button.bounds.position.x + 24.0f - textBounds.position.x,
+                           button.bounds.position.y + 13.0f - textBounds.position.y});
         window.draw(label);
+
+        float previewX = button.bounds.position.x + 24.0f;
+        const float previewY = button.bounds.position.y + 44.0f;
+        for (const EffectPreview& preview : buildEffectPreviews(option))
+        {
+            sf::Text previewText = makeText(font_, preview.text, 18, preview.color);
+            previewText.setPosition({previewX, previewY});
+            window.draw(previewText);
+            previewX += previewText.getLocalBounds().size.x + 22.0f;
+        }
     }
 
     sf::Text status = makeText(font_, buildStatusText(gameState), 22,
@@ -363,7 +457,7 @@ std::vector<EventView::OptionButton> EventView::layoutButtons(
     const float width = static_cast<float>(windowSize.x);
     const float height = static_cast<float>(windowSize.y);
     const float buttonWidth = width * 0.39f;
-    const float buttonHeight = 72.0f;
+    const float buttonHeight = 82.0f;
     const float gap = 18.0f;
     const float startX = width * 0.52f;
     const float startY = height * 0.46f;
@@ -443,7 +537,7 @@ void EventView::addChoiceFeedback(const EventOption& option, const GameState& be
         FloatingText goldText;
         goldText.text = "+" + std::to_string(after.gold - before.gold) + " Gold";
         goldText.position = {170.0f, 58.0f};
-        goldText.color = sf::Color(247, 197, 60);
+        goldText.color = sf::Color(43, 145, 72);
         goldText.lifetime = 1.2f;
         floatingTexts_.push_back(goldText);
     }
