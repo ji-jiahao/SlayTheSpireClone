@@ -10,11 +10,14 @@ public:
     void takeDamage(int amount);
     void loseHealth(int amount);
     void gainBlock(int amount);
+    void gainCardBlock(int amount);
     void gainEnergy(int amount);
     bool spendEnergy(int amount);
     void applyStrength(int amount);
     void applyWeak(int turns);
     void applyVulnerable(int turns);
+    void applyFrail(int turns);
+    void applyDexterity(int amount);
 
     int getCurrentHealth() const;
     int getMaxHealth() const;
@@ -24,6 +27,8 @@ public:
     int getStrength() const;
     int getWeak() const;
     int getVulnerable() const;
+    int getFrail() const;
+    int getDexterity() const;
 
 private:
     int maxHealth;
@@ -34,4 +39,6 @@ private:
     int strength;
     int weak;
     int vulnerable;
+    int frail;
+    int dexterity;
 };

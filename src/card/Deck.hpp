@@ -17,6 +17,7 @@ public:
     bool discardCard(std::size_t handIndex);
     bool exhaustCard(std::size_t handIndex);
     void discardHand();
+    void addToDiscardPile(const Card& card, std::size_t count = 1);
 
     const std::vector<Card>& getDrawPile() const;
     const std::vector<Card>& getHand() const;
