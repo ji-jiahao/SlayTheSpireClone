@@ -53,6 +53,7 @@ add_library(relic_system STATIC
 )
 
 target_include_directories(relic_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(relic_system PUBLIC card_system)
 
 add_library(ui STATIC
     src/ui/CardView.cpp
