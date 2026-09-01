@@ -27,3 +27,9 @@
 # Runtime files
 /saves/
 *.log
+
+# Local dependency folders and temporary setup copies
+/SFML-*/
+/SFML-*.zip
+/SlayTheSpireClone/
+/ConsoleApplication1/

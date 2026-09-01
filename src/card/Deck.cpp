@@ -53,6 +53,18 @@ bool Deck::discardCard(std::size_t handIndex)
     return true;
 }
 
+bool Deck::exhaustCard(std::size_t handIndex)
+{
+    if (handIndex >= hand.size())
+    {
+        return false;
+    }
+
+    exhaustPile.push_back(std::move(hand[handIndex]));
+    hand.erase(hand.begin() + static_cast<std::ptrdiff_t>(handIndex));
+    return true;
+}
+
 void Deck::discardHand()
 {
     discardPile.insert(
@@ -76,6 +88,11 @@ const std::vector<Card>& Deck::getHand() const
 const std::vector<Card>& Deck::getDiscardPile() const
 {
     return discardPile;
+}
+
+const std::vector<Card>& Deck::getExhaustPile() const
+{
+    return exhaustPile;
 }
 
 void Deck::reshuffleDiscardIntoDraw()

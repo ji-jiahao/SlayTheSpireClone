@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 源码含 UTF-8 中文注释与界面文字，MSVC 需要 /utf-8 才能正确解析。
+# 源码包含 UTF-8 中文界面文字。
 add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 
 # 优先复用仓库旁边已下载的 VS2022 x64 版 SFML 3.0.1。
@@ -26,7 +26,7 @@ else()
 
     set(SFML_DIR "${sfml_binary_SOURCE_DIR}/lib/cmake/SFML")
 endif()
-find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics Audio)
+find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics)
 
 add_library(card_system STATIC
     src/card/Card.cpp
@@ -38,25 +38,39 @@ target_include_directories(card_system PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-# UI 模块（C）：CardView 已可编译。
-# BattleView.cpp 依赖 combat/CombatSystem.hpp（B 的模块），
-# MapView.cpp 依赖 map/MapNode.hpp（D 的模块）。
-# 等对应模块合并到 main 后，把这两个 .cpp 追加到下方列表即可。
+add_library(combat_system STATIC
+    src/combat/CombatSystem.cpp
+    src/combat/Player.cpp
+    src/combat/Enemy.cpp
+)
+
+target_include_directories(combat_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(combat_system PUBLIC card_system)
+
+add_library(relic_system STATIC
+    src/relic/RelicDatabase.cpp
+    src/relic/RelicSystem.cpp
+)
+
+target_include_directories(relic_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(relic_system PUBLIC card_system)
+
 add_library(ui STATIC
     src/ui/CardView.cpp
-    src/ui/EventView.cpp
+    src/ui/BattleView.cpp
 )
 
 target_include_directories(ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ui PUBLIC card_system SFML::Graphics SFML::Audio)
+target_link_libraries(ui PUBLIC card_system combat_system SFML::Graphics)
 
 add_executable(SlayTheSpire
     src/main.cpp
+    src/app/Game.cpp
 )
 
-target_link_libraries(SlayTheSpire PRIVATE card_system ui SFML::Graphics SFML::Audio)
+target_link_libraries(SlayTheSpire PRIVATE combat_system relic_system ui SFML::Graphics)
 
-option(BUILD_TESTING "Build the card module tests" ON)
+option(BUILD_TESTING "Build project tests" ON)
 enable_testing()
 
 if(BUILD_TESTING)
@@ -65,7 +79,18 @@ if(BUILD_TESTING)
     )
 
     target_link_libraries(CardTests PRIVATE card_system)
+    if(MSVC)
+        target_compile_options(CardTests PRIVATE /utf-8)
+    endif()
     add_test(NAME CardTests COMMAND CardTests)
+
+    add_executable(CombatTests tests/combat_tests.cpp)
+    target_link_libraries(CombatTests PRIVATE combat_system)
+    add_test(NAME CombatTests COMMAND CombatTests)
+
+    add_executable(RelicTests tests/relic_tests.cpp)
+    target_link_libraries(RelicTests PRIVATE relic_system)
+    add_test(NAME RelicTests COMMAND RelicTests)
 endif()
 
 # Copy exactly the runtime DLLs required by the executable.
@@ -74,9 +99,13 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 $<TARGET_RUNTIME_DLLS:SlayTheSpire>
                 $<TARGET_FILE_DIR:SlayTheSpire>
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_CURRENT_SOURCE_DIR}/assets"
-                "$<TARGET_FILE_DIR:SlayTheSpire>/assets"
         COMMAND_EXPAND_LISTS
+    )
+    add_custom_command(TARGET SlayTheSpire POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:SlayTheSpire>/assets/fonts"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/simhei.ttf"
+                "$<TARGET_FILE_DIR:SlayTheSpire>/assets/fonts/simhei.ttf"
     )
 endif()

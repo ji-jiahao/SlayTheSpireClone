@@ -1,0 +1,118 @@
+[
+  {
+    "id": "strike",
+    "name": "打击",
+    "type": "Attack",
+    "cost": 1,
+    "description": "造成 6 点伤害。",
+    "effects": [
+      {
+        "type": "damage",
+        "value": 6
+      }
+    ]
+  },
+  {
+    "id": "defend",
+    "name": "防御",
+    "type": "Skill",
+    "cost": 1,
+    "description": "获得 5 点格挡。",
+    "effects": [
+      {
+        "type": "block",
+        "value": 5
+      }
+    ]
+  },
+  {
+    "id": "bash",
+    "name": "重击",
+    "type": "Attack",
+    "cost": 2,
+    "description": "造成 8 点伤害。",
+    "effects": [
+      {
+        "type": "damage",
+        "value": 8
+      }
+    ]
+  },
+  {
+    "id": "heavy_blade",
+    "name": "重刃",
+    "type": "Attack",
+    "cost": 2,
+    "description": "造成 14 点伤害。",
+    "effects": [
+      {
+        "type": "damage",
+        "value": 14
+      }
+    ]
+  },
+  {
+    "id": "guard",
+    "name": "守护",
+    "type": "Skill",
+    "cost": 2,
+    "description": "获得 12 点格挡。",
+    "effects": [
+      {
+        "type": "block",
+        "value": 12
+      }
+    ]
+  },
+  {
+    "id": "pommel_strike",
+    "name": "剑柄打击",
+    "type": "Attack",
+    "cost": 1,
+    "description": "造成 9 点伤害。抽 1 张牌。",
+    "effects": [
+      {
+        "type": "damage",
+        "value": 9
+      },
+      {
+        "type": "draw",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "shrug_it_off",
+    "name": "耸肩无视",
+    "type": "Skill",
+    "cost": 1,
+    "description": "获得 8 点格挡。抽 1 张牌。",
+    "effects": [
+      {
+        "type": "block",
+        "value": 8
+      },
+      {
+        "type": "draw",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "seeing_red",
+    "name": "盛怒",
+    "type": "Skill",
+    "cost": 1,
+    "description": "获得 2 点能量。消耗。",
+    "effects": [
+      {
+        "type": "gain_energy",
+        "value": 2
+      },
+      {
+        "type": "exhaust",
+        "value": 1
+      }
+    ]
+  }
+]

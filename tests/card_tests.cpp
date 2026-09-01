@@ -5,6 +5,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -33,18 +34,42 @@ void testCardDefinitions()
     require(strike.type == CardType::Attack, "Strike type is incorrect");
     require(strike.cost == 1 && strike.damage == 6 && strike.block == 0,
             "Strike values are incorrect");
+    require(strike.effects.size() == 1 && strike.effects[0].type == CardEffectType::Damage,
+            "Strike effect is incorrect");
 
     const Card defend = CardDatabase::createDefend();
     require(defend.id == "defend", "Defend id is incorrect");
     require(defend.type == CardType::Skill, "Defend type is incorrect");
     require(defend.cost == 1 && defend.damage == 0 && defend.block == 5,
             "Defend values are incorrect");
+    require(defend.effects.size() == 1 && defend.effects[0].type == CardEffectType::Block,
+            "Defend effect is incorrect");
 
     const Card bash = CardDatabase::createBash();
     require(bash.id == "bash", "Bash id is incorrect");
     require(bash.type == CardType::Attack, "Bash type is incorrect");
     require(bash.cost == 2 && bash.damage == 8 && bash.block == 0,
             "Bash values are incorrect");
+    require(bash.effects.size() == 2 && bash.effects[1].type == CardEffectType::ApplyVulnerable,
+            "Bash vulnerable effect is incorrect");
+}
+
+void testIroncladPool()
+{
+    const std::vector<Card> cards = CardDatabase::createIroncladCardPool();
+    require(cards.size() == 74, "Ironclad pool must contain 74 cards");
+    std::unordered_set<std::string> ids;
+    for (const Card& card : cards)
+    {
+        require(ids.insert(card.id).second, "Ironclad card IDs must be unique");
+        require(!card.effects.empty(), "Every card must have at least one effect");
+    }
+    require(CardDatabase::createById("pommel_strike").effects.size() == 2,
+            "Pommel Strike must have damage and draw effects");
+    require(CardDatabase::createById("whirlwind").cost == -1,
+            "Whirlwind must use X cost");
+    require(CardDatabase::createById("bash").upgradedEffects.size() == 2,
+            "Bash upgrade must preserve both effects");
 }
 
 void testStarterDeck()
@@ -112,6 +137,7 @@ int main()
     try
     {
         testCardDefinitions();
+        testIroncladPool();
         testStarterDeck();
         testDrawAndDiscard();
         testReshuffle();
