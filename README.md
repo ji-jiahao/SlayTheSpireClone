@@ -2,9 +2,7 @@
 
 基于 C++17 和 SFML 3 的课程设计项目。
 
-新成员请先阅读 [TEAM_SETUP.md](TEAM_SETUP.md)，里面包含手动下载流程和可直接交给 AI 的环境配置提示词。
-
-正式接口、命名和成员职责以 [docs/INTERFACE_AND_NAMING.md](docs/INTERFACE_AND_NAMING.md) 为准；开发范围、阶段目标和验收标准见 [docs/FIRST_ACT_PROJECT_PLAN.md](docs/FIRST_ACT_PROJECT_PLAN.md)。
+所有环境配置、五人分工、接口约定、Event 规则、Git 流程和验收标准统一见 [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md)。
 
 ## 开发环境
 
@@ -32,6 +30,8 @@ cmake --build --preset debug
 ```
 
 ## 协作规则
+
+完整协作步骤见 [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md)。
 
 不要提交 `out/`、`.vs/`、`.obj`、`.exe` 或 DLL；这些文件由每台电脑自行生成。
 

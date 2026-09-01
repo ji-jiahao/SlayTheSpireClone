@@ -25,11 +25,33 @@ else()
 endif()
 find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics)
 
+add_library(card_system STATIC
+    src/card/Card.cpp
+    src/card/CardDatabase.cpp
+    src/card/Deck.cpp
+)
+
+target_include_directories(card_system PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
 add_executable(SlayTheSpire
     src/main.cpp
 )
 
-target_link_libraries(SlayTheSpire PRIVATE SFML::Graphics)
+target_link_libraries(SlayTheSpire PRIVATE card_system SFML::Graphics)
+
+option(BUILD_TESTING "Build the card module tests" ON)
+enable_testing()
+
+if(BUILD_TESTING)
+    add_executable(CardTests
+        tests/card_tests.cpp
+    )
+
+    target_link_libraries(CardTests PRIVATE card_system)
+    add_test(NAME CardTests COMMAND CardTests)
+endif()
 
 # Copy exactly the runtime DLLs required by the executable.
 if(WIN32)
