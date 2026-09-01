@@ -16,6 +16,7 @@ enum class BattleResult
 
 struct EncounterDefinition
 {
+    std::string enemyId = "cultist";
     std::string enemyName = "邪教徒";
     int enemyHealth = 40;
     int intentDamage = 6;
@@ -40,10 +41,12 @@ public:
     const Enemy& getEnemy() const;
     const std::vector<Card>& getHandCards() const;
     const Deck& getDeck() const;
+    int getEnemyIntentDamage() const;
     BattleResult getResult() const;
 
 private:
     void resolveEffect(const CardEffect& effect);
+    void resolveEnemyIntent();
     int calculatePlayerDamage(int baseDamage) const;
     int calculateEnemyDamage(int baseDamage) const;
     void drawHand(std::size_t count = 5);
@@ -52,4 +55,5 @@ private:
     Enemy enemy;
     Deck deck;
     BattleResult result;
+    bool deathPowerApplied = false;
 };

@@ -75,6 +75,11 @@ void Deck::discardHand()
     hand.clear();
 }
 
+void Deck::addToDiscardPile(const Card& card, std::size_t count)
+{
+    discardPile.insert(discardPile.end(), count, card);
+}
+
 const std::vector<Card>& Deck::getDrawPile() const
 {
     return drawPile;
