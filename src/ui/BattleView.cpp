@@ -162,6 +162,13 @@ void BattleView::drawPlayerPanel(sf::RenderWindow& window, const Player& player)
                      sf::Color(140, 180, 230));
         blockText.setPosition({58.0f, 140.0f});
         window.draw(blockText);
+
+        const std::string status = "力量 " + std::to_string(player.getStrength()) +
+                                   "  虚弱 " + std::to_string(player.getWeak()) +
+                                   "  易伤 " + std::to_string(player.getVulnerable());
+        sf::Text statusText = makeText(*font_, status, 15, sf::Color(190, 190, 200));
+        statusText.setPosition({150.0f, 143.0f});
+        window.draw(statusText);
     }
 
     const float hpRatio = maxHealth > 0.0f ? currentHealth / maxHealth : 0.0f;
@@ -199,6 +206,13 @@ void BattleView::drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy) co
                      sf::Color(230, 120, 110));
         intentText.setPosition({kWindowWidth - 402.0f, 140.0f});
         window.draw(intentText);
+
+        const std::string status = "力量 " + std::to_string(enemy.getStrength()) +
+                                   "  虚弱 " + std::to_string(enemy.getWeak()) +
+                                   "  易伤 " + std::to_string(enemy.getVulnerable());
+        sf::Text statusText = makeText(*font_, status, 15, sf::Color(190, 190, 200));
+        statusText.setPosition({kWindowWidth - 285.0f, 143.0f});
+        window.draw(statusText);
     }
 
     const float hpRatio = maxHealth > 0.0f ? currentHealth / maxHealth : 0.0f;

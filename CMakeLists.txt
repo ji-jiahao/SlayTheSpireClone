@@ -38,20 +38,38 @@ target_include_directories(card_system PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+add_library(combat_system STATIC
+    src/combat/CombatSystem.cpp
+    src/combat/Player.cpp
+    src/combat/Enemy.cpp
+)
+
+target_include_directories(combat_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(combat_system PUBLIC card_system)
+
+add_library(relic_system STATIC
+    src/relic/RelicDatabase.cpp
+    src/relic/RelicSystem.cpp
+)
+
+target_include_directories(relic_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 add_library(ui STATIC
     src/ui/CardView.cpp
+    src/ui/BattleView.cpp
 )
 
 target_include_directories(ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ui PUBLIC card_system SFML::Graphics)
+target_link_libraries(ui PUBLIC card_system combat_system SFML::Graphics)
 
 add_executable(SlayTheSpire
     src/main.cpp
+    src/app/Game.cpp
 )
 
-target_link_libraries(SlayTheSpire PRIVATE card_system ui SFML::Graphics)
+target_link_libraries(SlayTheSpire PRIVATE combat_system relic_system ui SFML::Graphics)
 
-option(BUILD_TESTING "Build the card module tests" ON)
+option(BUILD_TESTING "Build project tests" ON)
 enable_testing()
 
 if(BUILD_TESTING)
@@ -64,6 +82,14 @@ if(BUILD_TESTING)
         target_compile_options(CardTests PRIVATE /utf-8)
     endif()
     add_test(NAME CardTests COMMAND CardTests)
+
+    add_executable(CombatTests tests/combat_tests.cpp)
+    target_link_libraries(CombatTests PRIVATE combat_system)
+    add_test(NAME CombatTests COMMAND CombatTests)
+
+    add_executable(RelicTests tests/relic_tests.cpp)
+    target_link_libraries(RelicTests PRIVATE relic_system)
+    add_test(NAME RelicTests COMMAND RelicTests)
 endif()
 
 # Copy exactly the runtime DLLs required by the executable.
@@ -73,5 +99,12 @@ if(WIN32)
                 $<TARGET_RUNTIME_DLLS:SlayTheSpire>
                 $<TARGET_FILE_DIR:SlayTheSpire>
         COMMAND_EXPAND_LISTS
+    )
+    add_custom_command(TARGET SlayTheSpire POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:SlayTheSpire>/assets/fonts"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/simhei.ttf"
+                "$<TARGET_FILE_DIR:SlayTheSpire>/assets/fonts/simhei.ttf"
     )
 endif()
