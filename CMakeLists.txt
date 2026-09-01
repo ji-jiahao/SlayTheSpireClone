@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# 源码含 UTF-8 中文注释与界面文字，MSVC 需要 /utf-8 才能正确解析。
+add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+
 # Download the official VS2022 x64 package; no personal install path is needed.
 include(FetchContent)
 FetchContent_Declare(
@@ -29,11 +32,22 @@ target_include_directories(card_system PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+# UI 模块（C）：CardView 已可编译。
+# BattleView.cpp 依赖 combat/CombatSystem.hpp（B 的模块），
+# MapView.cpp 依赖 map/MapNode.hpp（D 的模块）。
+# 等对应模块合并到 main 后，把这两个 .cpp 追加到下方列表即可。
+add_library(ui STATIC
+    src/ui/CardView.cpp
+)
+
+target_include_directories(ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(ui PUBLIC card_system SFML::Graphics)
+
 add_executable(SlayTheSpire
     src/main.cpp
 )
 
-target_link_libraries(SlayTheSpire PRIVATE card_system SFML::Graphics)
+target_link_libraries(SlayTheSpire PRIVATE card_system ui SFML::Graphics)
 
 option(BUILD_TESTING "Build the card module tests" ON)
 enable_testing()
