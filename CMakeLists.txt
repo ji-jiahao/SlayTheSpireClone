@@ -23,13 +23,21 @@ else()
 
     set(SFML_DIR "${sfml_binary_SOURCE_DIR}/lib/cmake/SFML")
 endif()
-find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics)
+find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics Audio)
 
 add_executable(SlayTheSpire
     src/main.cpp
+    src/app/Game.cpp
+    src/event/EventDatabase.cpp
+    src/event/EventSystem.cpp
+    src/ui/EventView.cpp
 )
 
-target_link_libraries(SlayTheSpire PRIVATE SFML::Graphics)
+target_include_directories(SlayTheSpire PRIVATE src)
+target_compile_options(SlayTheSpire PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/utf-8>
+)
+target_link_libraries(SlayTheSpire PRIVATE SFML::Graphics SFML::Audio)
 
 # Copy exactly the runtime DLLs required by the executable.
 if(WIN32)
@@ -37,6 +45,9 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 $<TARGET_RUNTIME_DLLS:SlayTheSpire>
                 $<TARGET_FILE_DIR:SlayTheSpire>
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+                "$<TARGET_FILE_DIR:SlayTheSpire>/assets"
         COMMAND_EXPAND_LISTS
     )
 endif()
