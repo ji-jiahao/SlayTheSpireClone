@@ -326,3 +326,32 @@ Card CardDatabase::createById(const std::string& id)
     }
     throw std::invalid_argument("Unknown card id: " + id);
 }
+
+Card CardDatabase::createFromInstance(const CardInstance& instance)
+{
+    Card card = createById(instance.definitionId);
+    if (!instance.upgraded)
+    {
+        return card;
+    }
+
+    card.name += "+";
+    card.cost = card.upgradedCost;
+    card.description = card.upgradedDescription;
+    card.effects = card.upgradedEffects;
+    card.damage = 0;
+    card.block = 0;
+    for (const CardEffect& effect : card.effects)
+    {
+        if ((effect.type == CardEffectType::Damage || effect.type == CardEffectType::MultiDamage) &&
+            card.damage == 0)
+        {
+            card.damage = effect.value;
+        }
+        if (effect.type == CardEffectType::Block && card.block == 0)
+        {
+            card.block = effect.value;
+        }
+    }
+    return card;
+}
