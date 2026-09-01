@@ -6,7 +6,7 @@
 
 namespace
 {
-const char* kDemoEventId = "sacred_nailong";
+const char* kDemoEventId = "university_choice";
 const char* kFontPath = "assets/fonts/simhei.ttf";
 const char* kEventDataPath = "assets/data/events.json";
 
@@ -78,6 +78,12 @@ void Game::handleEvents()
 
         if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>())
         {
+            if (scene_ == SceneType::Event &&
+                eventView_.handleAnyInput(eventSystem_, gameState_))
+            {
+                continue;
+            }
+
             if (keyPressed->code == sf::Keyboard::Key::Escape)
             {
                 window_.close();

@@ -1,5 +1,64 @@
 [
   {
+    "id": "university_choice",
+    "title": "哪个是更好的大学？",
+    "description": "哪个是更好的大学？",
+    "background": "assets/images/event/dungeon_background.png",
+    "act": 1,
+    "weight": 8,
+    "states": [
+      {
+        "title": "哪个是更好的大学？",
+        "text": "",
+        "left_image": "assets/images/event/southeast_university_logo.png",
+        "right_image": "assets/images/event/nanjing_university_logo.png",
+        "sound": "assets/sounds/laoda_theme.ogg",
+        "overlay_alpha": 150
+      },
+      {
+        "text": "车大win，你感受到了六朝遗韵，获得100金币并回复20点血量",
+        "sound": "assets/sounds/southeast_university_anthem.mp3",
+        "overlay_alpha": 150,
+        "close_on_click": 1
+      },
+      {
+        "text": "车大lose，你不是一个合格的车兵，丢弃所有金币",
+        "sound": "assets/sounds/detective_theme.mp3",
+        "overlay_alpha": 150,
+        "close_on_click": 1
+      }
+    ],
+    "options": [
+      {
+        "text": "东南大学",
+        "state": 0,
+        "next_state": 1,
+        "closes_event": 0,
+        "effects": [
+          {
+            "type": "gain_gold",
+            "value": 100
+          },
+          {
+            "type": "heal",
+            "value": 20
+          }
+        ]
+      },
+      {
+        "text": "南京大学",
+        "state": 0,
+        "next_state": 2,
+        "closes_event": 0,
+        "effects": [
+          {
+            "type": "lose_all_gold"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "id": "sacred_nailong",
     "title": "神圣的不明生物",
     "description": "………………",

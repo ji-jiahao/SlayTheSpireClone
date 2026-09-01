@@ -256,6 +256,7 @@ enum class EventEffectType
     LoseHealth,
     GainGold,
     LoseGold,
+    LoseAllGold,
     AddCard,
     RemoveCard,
     UpgradeCard
@@ -280,9 +281,14 @@ struct EventOption
 
 struct EventState
 {
+    std::string title;
     std::string text;
     std::string imagePath;
+    std::string leftImagePath;
+    std::string rightImagePath;
     std::string soundPath;
+    int overlayAlpha;
+    bool closeOnClick;
 };
 
 struct EventDefinition
@@ -312,6 +318,7 @@ class EventSystem
 public:
     bool startEvent(const std::string& eventId);
     bool chooseOption(int optionIndex, GameState& gameState);
+    bool finishEvent(GameState& gameState);
     const EventDefinition& getCurrentEvent() const;
     std::size_t getCurrentStateIndex() const;
     bool isFinished() const;

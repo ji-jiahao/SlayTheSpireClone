@@ -19,6 +19,7 @@ public:
     void enterCurrentState(const EventSystem& eventSystem);
     void update(float deltaSeconds);
     void handleMouseMove(sf::Vector2f mousePosition, const EventSystem& eventSystem);
+    bool handleAnyInput(EventSystem& eventSystem, GameState& gameState);
     bool handleMouseClick(sf::Vector2f mousePosition, EventSystem& eventSystem,
                           GameState& gameState);
     bool shouldReturnToMap() const;
@@ -62,6 +63,7 @@ private:
     std::vector<OptionButton> layoutButtons(const EventSystem& eventSystem,
                                             sf::Vector2u windowSize) const;
     const EventState& getCurrentState(const EventSystem& eventSystem) const;
+    bool isChoiceBannerState(const EventState& state) const;
     void playStateSound(const EventState& state);
     void stopSound();
     void addChoiceFeedback(const EventOption& option, const GameState& before,

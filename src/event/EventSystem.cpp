@@ -80,15 +80,7 @@ bool EventSystem::chooseOption(int optionIndex, GameState& gameState)
 
     if (!option.closesEvent && option.nextState >= 0)
     {
-        const bool hasNextState = std::any_of(
-            currentEvent_->options.begin(),
-            currentEvent_->options.end(),
-            [&option](const EventOption& candidate)
-            {
-                return candidate.state == option.nextState;
-            });
-
-        if (!hasNextState)
+        if (static_cast<std::size_t>(option.nextState) >= currentEvent_->states.size())
         {
             lastError_ = "事件下一阶段索引越界";
             return false;
@@ -101,6 +93,20 @@ bool EventSystem::chooseOption(int optionIndex, GameState& gameState)
     }
 
     gameState = std::move(trialState);
+    gameState.markEventVisited(currentEvent_->id);
+    finished_ = true;
+    lastError_.clear();
+    return true;
+}
+
+bool EventSystem::finishEvent(GameState& gameState)
+{
+    if (!hasActiveEvent())
+    {
+        lastError_ = "当前没有激活的事件";
+        return false;
+    }
+
     gameState.markEventVisited(currentEvent_->id);
     finished_ = true;
     lastError_.clear();
@@ -155,6 +161,9 @@ bool EventSystem::applyEffect(const EventEffect& effect, GameState& gameState)
         return true;
     case EventEffectType::LoseGold:
         return gameState.spendGold(repeatCount);
+    case EventEffectType::LoseAllGold:
+        gameState.loseAllGold();
+        return true;
     case EventEffectType::AddCard:
         if (effect.parameter.empty())
         {

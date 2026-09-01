@@ -10,6 +10,7 @@ enum class EventEffectType
     LoseHealth,
     GainGold,
     LoseGold,
+    LoseAllGold,
     AddCard,
     RemoveCard,
     UpgradeCard
@@ -34,9 +35,14 @@ struct EventOption
 
 struct EventState
 {
+    std::string title;
     std::string text;
     std::string imagePath;
+    std::string leftImagePath;
+    std::string rightImagePath;
     std::string soundPath;
+    int overlayAlpha = 70;
+    bool closeOnClick = false;
 };
 
 struct EventDefinition

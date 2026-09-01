@@ -503,6 +503,11 @@ EventEffectType parseEventEffectType(const std::string& typeName)
         return EventEffectType::LoseGold;
     }
 
+    if (typeName == "lose_all_gold")
+    {
+        return EventEffectType::LoseAllGold;
+    }
+
     if (typeName == "add_card")
     {
         return EventEffectType::AddCard;
@@ -571,9 +576,14 @@ EventState parseState(const JsonValue& value)
     }
 
     EventState state;
+    state.title = optionalString(value, "title");
     state.text = requireString(value, "text");
     state.imagePath = optionalString(value, "image");
+    state.leftImagePath = optionalString(value, "left_image");
+    state.rightImagePath = optionalString(value, "right_image");
     state.soundPath = optionalString(value, "sound");
+    state.overlayAlpha = optionalInt(value, "overlay_alpha", 70);
+    state.closeOnClick = optionalInt(value, "close_on_click", 0) != 0;
     return state;
 }
 
@@ -611,6 +621,7 @@ EventDefinition parseEvent(const JsonValue& value)
     if (event.states.empty())
     {
         EventState defaultState;
+        defaultState.title = event.title;
         defaultState.text = event.description;
         defaultState.imagePath = event.imagePath;
         defaultState.soundPath = event.soundPath;
@@ -646,6 +657,8 @@ std::string eventEffectTypeToString(EventEffectType type)
         return "gain_gold";
     case EventEffectType::LoseGold:
         return "lose_gold";
+    case EventEffectType::LoseAllGold:
+        return "lose_all_gold";
     case EventEffectType::AddCard:
         return "add_card";
     case EventEffectType::RemoveCard:

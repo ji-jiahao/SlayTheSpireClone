@@ -62,6 +62,11 @@ struct GameState
         return true;
     }
 
+    void loseAllGold()
+    {
+        gold = 0;
+    }
+
     bool hasVisitedEvent(const std::string& eventId) const
     {
         return std::find(visitedEventIds.begin(), visitedEventIds.end(), eventId)
