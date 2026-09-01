@@ -4,6 +4,19 @@
 
 所有环境配置、五人分工、接口约定、Event 规则、Git 流程和验收标准统一见 [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md)。
 
+## 当前可玩版本
+
+目前 `main` 提供第一版单场战斗闭环：
+
+- 铁甲战士 80 点生命、3 点能量和原版 5/4/1 初始牌组。
+- 邪教徒 40 点生命，显示 6 点攻击意图。
+- 点击手牌出牌，支持伤害、格挡、能量、力量、虚弱和易伤的基础结算。
+- 痛击施加易伤，易伤期间攻击造成 1.5 倍伤害。
+- 点击“结束回合”后，弃掉手牌、敌人攻击并重新抽 5 张牌。
+- 战斗胜利后，“燃烧之血”回复 6 点生命；按 `R` 可重新战斗。
+
+铁甲战士 74 张卡牌的数据和升级数据已经建立，但当前可玩闭环只使用初始牌组。复杂卡牌的条件触发、能力牌、选牌、X 费、多敌人和完整消耗机制仍需后续实现。
+
 ## 开发环境
 
 - Windows 10/11 x64
@@ -27,6 +40,7 @@
 ```powershell
 cmake --preset windows-x64
 cmake --build --preset debug
+ctest --test-dir out/build/windows-x64 -C Debug --output-on-failure
 ```
 
 ## 协作规则
@@ -53,7 +67,7 @@ git push -u origin feature/card-system
 
 然后在 GitHub 创建 Pull Request，由另一名成员检查后合并到 `main`。不要让五个人同时直接修改并推送 `main`。
 
-新增 `.cpp` 文件后，还要把它加入 `CMakeLists.txt` 的 `add_executable` 列表，否则不会参与编译。
+新增 `.cpp` 文件后，还要把它加入 `CMakeLists.txt` 中对应目标，否则不会参与编译。
 
 ## 常见问题
 
