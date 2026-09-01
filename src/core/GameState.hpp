@@ -14,6 +14,7 @@ struct GameState
     unsigned int seed = 20260901;
     std::vector<CardInstance> deck;
     std::vector<std::string> relicIds{"burning_blood"};
+    std::vector<std::string> visitedEventIds;
 
     GameState()
     {
@@ -30,6 +31,7 @@ struct GameState
         for (int index = 0; index < 4; ++index) deck.push_back({"defend", false});
         deck.push_back({"bash", false});
         relicIds = {"burning_blood"};
+        visitedEventIds.clear();
     }
 
     int heal(int amount)
@@ -69,6 +71,41 @@ struct GameState
         if (found == deck.end()) return false;
         deck.erase(found);
         return true;
+    }
+
+    bool removeCard(const std::string& cardId)
+    {
+        return removeFirstCard(cardId);
+    }
+
+    bool upgradeCard(const std::string& cardId)
+    {
+        const auto found = std::find_if(deck.begin(), deck.end(), [&cardId](const CardInstance& card) {
+            return card.definitionId == cardId && !card.upgraded;
+        });
+        if (found == deck.end()) return false;
+        found->upgraded = true;
+        return true;
+    }
+
+    void loseAllGold()
+    {
+        gold = 0;
+    }
+
+    bool hasVisitedEvent(const std::string& eventId) const
+    {
+        return std::find(visitedEventIds.begin(), visitedEventIds.end(), eventId) != visitedEventIds.end();
+    }
+
+    void markEventVisited(const std::string& eventId)
+    {
+        if (!eventId.empty() && !hasVisitedEvent(eventId)) visitedEventIds.push_back(eventId);
+    }
+
+    bool isDead() const
+    {
+        return currentHealth <= 0;
     }
 
     bool upgradeFirstCard()

@@ -14,6 +14,7 @@ public:
     void setDatabase(const EventDatabase& database);
     bool startEvent(const std::string& eventId);
     bool chooseOption(int optionIndex, GameState& gameState);
+    bool finishEvent(GameState& gameState);
     const EventDefinition& getCurrentEvent() const;
     std::size_t getCurrentStateIndex() const;
     bool isFinished() const;

@@ -2,6 +2,8 @@
 
 #include "combat/CombatSystem.hpp"
 #include "core/GameState.hpp"
+#include "event/EventDatabase.hpp"
+#include "event/EventSystem.hpp"
 #include "map/MapGenerator.hpp"
 #include "map/MapState.hpp"
 #include "relic/RelicSystem.hpp"
@@ -9,6 +11,7 @@
 #include "ui/MainMenuView.hpp"
 #include "ui/MapView.hpp"
 #include "ui/RoomView.hpp"
+#include "ui/EventView.hpp"
 
 #include <SFML/Graphics.hpp>
 
@@ -57,6 +60,9 @@ private:
     std::vector<Card> buildCombatDeck() const;
     std::vector<RoomAction> currentActions() const;
     bool loadResources();
+    bool loadEventResources();
+    void startEventForCurrentNode();
+    void updateEvent();
 
     sf::RenderWindow window_;
     sf::Font font_;
@@ -67,6 +73,9 @@ private:
     MapView mapView_;
     BattleView battleView_;
     RoomView roomView_;
+    EventDatabase eventDatabase_;
+    EventSystem eventSystem_;
+    EventView eventView_;
     SceneType scene_ = SceneType::MainMenu;
     GameState state_;
     MapGenerator mapGenerator_;

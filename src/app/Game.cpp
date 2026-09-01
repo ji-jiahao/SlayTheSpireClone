@@ -7,6 +7,7 @@
 #include <array>
 #include <filesystem>
 #include <stdexcept>
+#include <iostream>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -66,10 +67,12 @@ bool loadTextureFromCandidates(sf::Texture& texture)
 }
 
 Game::Game()
-    : window_(sf::VideoMode({kWindowWidth, kWindowHeight}), "Spire Road - Act One")
+    : window_(sf::VideoMode({kWindowWidth, kWindowHeight}), "Spire Road - Act One"),
+      eventSystem_(eventDatabase_)
 {
     window_.setFramerateLimit(60);
     fontLoaded_ = loadResources();
+    loadEventResources();
 }
 
 void Game::run()
@@ -87,6 +90,11 @@ void Game::run()
                 if (mouse->button == sf::Mouse::Button::Left)
                 {
                     const sf::Vector2f position = window_.mapPixelToCoords(mouse->position);
+                    if (scene_ == SceneType::Event)
+                    {
+                        eventView_.handleMouseClick(position, eventSystem_, state_);
+                        continue;
+                    }
                     if (scene_ == SceneType::Map &&
                         !(position.x >= 1035.0f && position.x <= 1225.0f &&
                           position.y >= 12.0f && position.y <= 58.0f))
@@ -98,7 +106,11 @@ void Game::run()
             }
             else if (const auto* mouse = event->getIf<sf::Event::MouseMoved>())
             {
-                if (scene_ == SceneType::Map)
+                if (scene_ == SceneType::Event)
+                {
+                    eventView_.handleMouseMove(window_.mapPixelToCoords(mouse->position), eventSystem_);
+                }
+                else if (scene_ == SceneType::Map)
                 {
                     mapView_.updatePointer(window_.mapPixelToCoords(mouse->position));
                 }
@@ -118,7 +130,11 @@ void Game::run()
             }
             else if (const auto* key = event->getIf<sf::Event::KeyPressed>())
             {
-                if (key->code == sf::Keyboard::Key::Escape && scene_ == SceneType::Map)
+                if (scene_ == SceneType::Event)
+                {
+                    eventView_.handleAnyInput(eventSystem_, state_);
+                }
+                else if (key->code == sf::Keyboard::Key::Escape && scene_ == SceneType::Map)
                 {
                     returnToMenu();
                 }
@@ -130,6 +146,7 @@ void Game::run()
             combat_.update();
             handleBattleResult();
         }
+        if (scene_ == SceneType::Event) updateEvent();
         draw();
     }
 }
@@ -270,6 +287,10 @@ void Game::draw()
     case SceneType::Battle:
         battleView_.draw(window_, combat_);
         break;
+    case SceneType::Event:
+        if (eventSystem_.hasActiveEvent()) eventView_.draw(window_, eventSystem_, state_);
+        else drawRoom();
+        break;
     case SceneType::DeckView:
         drawDeckView();
         break;
@@ -316,10 +337,7 @@ void Game::enterMapNode(int nodeId)
         startCurrentBattle();
         break;
     case MapNodeType::Unknown:
-        roomEyebrow_ = "未知房间";
-        roomTitle_ = "被遗忘的祭坛";
-        roomDescription_ = "石台上散落着金币，旁边的泉水仍泛着微光。";
-        scene_ = SceneType::Event;
+        startEventForCurrentNode();
         break;
     case MapNodeType::Rest:
         roomEyebrow_ = "篝火";
@@ -608,4 +626,102 @@ bool Game::loadResources()
     }
     // 没有背景图时各视图会使用纯色背景，不能影响文字和卡牌内容显示。
     return fontLoaded;
+}
+
+bool Game::loadEventResources()
+{
+    const std::array<std::filesystem::path, 4> fontCandidates = {
+        executableDirectory() / "assets/fonts/simhei.ttf",
+        std::filesystem::path("assets/fonts/simhei.ttf"),
+        std::filesystem::path("Debug/assets/fonts/simhei.ttf"),
+        std::filesystem::path("../assets/fonts/simhei.ttf")};
+    bool fontReady = false;
+    for (const auto& path : fontCandidates)
+    {
+        if (std::filesystem::exists(path))
+        {
+            fontReady = eventView_.loadFont(path.string());
+            if (fontReady) break;
+        }
+    }
+
+    const std::array<std::filesystem::path, 4> dataCandidates = {
+        executableDirectory() / "assets/data/events.json",
+        std::filesystem::path("assets/data/events.json"),
+        std::filesystem::path("Debug/assets/data/events.json"),
+        std::filesystem::path("../assets/data/events.json")};
+    bool dataReady = false;
+    for (const auto& path : dataCandidates)
+    {
+        if (std::filesystem::exists(path) && eventDatabase_.loadFromFile(path.string()))
+        {
+            dataReady = true;
+            break;
+        }
+    }
+
+    if (!fontReady || !dataReady)
+    {
+        std::cerr << "事件资源未加载，未知节点将使用默认事件。\n";
+    }
+    return fontReady && dataReady;
+}
+
+void Game::startEventForCurrentNode()
+{
+    const std::vector<std::string> eventIds = eventDatabase_.getActOneEventIds();
+    if (eventIds.empty() || !fontLoaded_)
+    {
+        roomEyebrow_ = "未知房间";
+        roomTitle_ = "被遗忘的祭坛";
+        roomDescription_ = "石台上散落着金币，旁边的泉水仍泛着微光。";
+        scene_ = SceneType::Event;
+        return;
+    }
+
+    const std::size_t startIndex = static_cast<std::size_t>(
+        std::max(0, mapState_.getCurrentFloor())) % eventIds.size();
+    for (std::size_t offset = 0; offset < eventIds.size(); ++offset)
+    {
+        const std::string& eventId = eventIds[(startIndex + offset) % eventIds.size()];
+        if (state_.hasVisitedEvent(eventId)) continue;
+        if (!eventSystem_.startEvent(eventId)) continue;
+        try
+        {
+            if (eventView_.prepareEvent(eventSystem_.getCurrentEvent()))
+            {
+                eventView_.enterCurrentState(eventSystem_);
+                scene_ = SceneType::Event;
+                return;
+            }
+        }
+        catch (const std::exception& exception)
+        {
+            std::cerr << "事件资源加载失败: " << exception.what() << "\n";
+        }
+    }
+
+    roomEyebrow_ = "未知房间";
+    roomTitle_ = "被遗忘的祭坛";
+    roomDescription_ = "这里暂时没有新的事件。你安全地离开了。";
+    scene_ = SceneType::Event;
+}
+
+void Game::updateEvent()
+{
+    eventView_.update(1.0f / 60.0f);
+    if (!eventView_.shouldReturnToMap()) return;
+
+    eventView_.clearReturnToMapRequest();
+    if (state_.isDead())
+    {
+        roomEyebrow_ = "挑战失败";
+        roomTitle_ = "你倒在了事件房间";
+        roomDescription_ = "你可以重新开始，或返回主菜单。";
+        scene_ = SceneType::GameOver;
+    }
+    else
+    {
+        finishCurrentNode();
+    }
 }

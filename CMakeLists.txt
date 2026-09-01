@@ -26,7 +26,7 @@ else()
 
     set(SFML_DIR "${sfml_binary_SOURCE_DIR}/lib/cmake/SFML")
 endif()
-find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics)
+find_package(SFML 3.0.1 EXACT CONFIG REQUIRED COMPONENTS Graphics Audio)
 
 add_library(card_system STATIC
     src/card/Card.cpp
@@ -62,6 +62,12 @@ add_library(map_system STATIC
 
 target_include_directories(map_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+add_library(event_system STATIC
+    src/event/EventDatabase.cpp
+    src/event/EventSystem.cpp
+)
+target_include_directories(event_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 add_library(ui STATIC
     src/ui/CardView.cpp
     src/ui/BattleView.cpp
@@ -69,17 +75,19 @@ add_library(ui STATIC
     src/ui/MainMenuView.cpp
     src/ui/MapView.cpp
     src/ui/RoomView.cpp
+    src/ui/EventView.cpp
 )
 
 target_include_directories(ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ui PUBLIC card_system combat_system map_system SFML::Graphics)
+target_link_libraries(ui PUBLIC card_system combat_system map_system event_system SFML::Graphics SFML::Audio)
 
 add_executable(SlayTheSpire
     src/main.cpp
     src/app/Game.cpp
 )
 
-target_link_libraries(SlayTheSpire PRIVATE combat_system relic_system map_system ui SFML::Graphics)
+target_link_libraries(SlayTheSpire PRIVATE combat_system relic_system map_system event_system ui SFML::Graphics SFML::Audio)
+
 
 option(BUILD_TESTING "Build project tests" ON)
 enable_testing()
