@@ -51,6 +51,29 @@ void drawBar(sf::RenderWindow& window, sf::Vector2f position, sf::Vector2f size,
     outline.setOutlineThickness(2.0f);
     window.draw(outline);
 }
+
+void drawStatusBadge(sf::RenderWindow& window, const sf::Font& font,
+                     sf::Vector2f position, const std::string& label, int value,
+                     sf::Color color)
+{
+    sf::CircleShape badge(13.0f, 20);
+    badge.setOrigin({13.0f, 13.0f});
+    badge.setPosition(position);
+    badge.setFillColor(color);
+    badge.setOutlineColor(sf::Color(238, 232, 214));
+    badge.setOutlineThickness(1.5f);
+    window.draw(badge);
+
+    sf::Text labelText = makeText(font, label, 13, sf::Color(250, 246, 236));
+    const sf::FloatRect labelBounds = labelText.getLocalBounds();
+    labelText.setPosition({position.x - labelBounds.size.x / 2.0f - labelBounds.position.x,
+                           position.y - labelBounds.size.y / 2.0f - labelBounds.position.y - 1.0f});
+    window.draw(labelText);
+
+    sf::Text valueText = makeText(font, std::to_string(value), 14, sf::Color(220, 215, 204));
+    valueText.setPosition({position.x + 18.0f, position.y - 10.0f});
+    window.draw(valueText);
+}
 } // namespace
 
 BattleView::BattleView() : font_(nullptr), background_(nullptr) {}
@@ -206,12 +229,12 @@ void BattleView::drawPlayerPanel(sf::RenderWindow& window, const Player& player)
         blockText.setPosition({58.0f, 140.0f});
         window.draw(blockText);
 
-        const std::string status = "力量 " + std::to_string(player.getStrength()) +
-                                   "  虚弱 " + std::to_string(player.getWeak()) +
-                                   "  易伤 " + std::to_string(player.getVulnerable());
-        sf::Text statusText = makeText(*font_, status, 15, sf::Color(190, 190, 200));
-        statusText.setPosition({150.0f, 143.0f});
-        window.draw(statusText);
+        drawStatusBadge(window, *font_, {178.0f, 153.0f}, "力", player.getStrength(),
+                        sf::Color(170, 83, 55));
+        drawStatusBadge(window, *font_, {247.0f, 153.0f}, "弱", player.getWeak(),
+                        sf::Color(85, 116, 155));
+        drawStatusBadge(window, *font_, {316.0f, 153.0f}, "易", player.getVulnerable(),
+                        sf::Color(157, 91, 57));
     }
 
     const float hpRatio = maxHealth > 0.0f ? currentHealth / maxHealth : 0.0f;
@@ -250,12 +273,12 @@ void BattleView::drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy) co
         intentText.setPosition({kWindowWidth - 402.0f, 140.0f});
         window.draw(intentText);
 
-        const std::string status = "力量 " + std::to_string(enemy.getStrength()) +
-                                   "  虚弱 " + std::to_string(enemy.getWeak()) +
-                                   "  易伤 " + std::to_string(enemy.getVulnerable());
-        sf::Text statusText = makeText(*font_, status, 15, sf::Color(190, 190, 200));
-        statusText.setPosition({kWindowWidth - 285.0f, 143.0f});
-        window.draw(statusText);
+        drawStatusBadge(window, *font_, {kWindowWidth - 302.0f, 153.0f}, "力",
+                        enemy.getStrength(), sf::Color(170, 83, 55));
+        drawStatusBadge(window, *font_, {kWindowWidth - 233.0f, 153.0f}, "弱",
+                        enemy.getWeak(), sf::Color(85, 116, 155));
+        drawStatusBadge(window, *font_, {kWindowWidth - 164.0f, 153.0f}, "易",
+                        enemy.getVulnerable(), sf::Color(157, 91, 57));
     }
 
     const float hpRatio = maxHealth > 0.0f ? currentHealth / maxHealth : 0.0f;

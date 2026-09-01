@@ -61,7 +61,8 @@ private:
     sf::RenderWindow window_;
     sf::Font font_;
     sf::Texture dungeonTexture_;
-    bool resourcesLoaded_ = false;
+    // 字体是界面文字和卡牌内容的必要资源，背景图只是可选装饰资源。
+    bool fontLoaded_ = false;
     MainMenuView mainMenuView_;
     MapView mapView_;
     BattleView battleView_;

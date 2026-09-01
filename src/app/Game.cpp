@@ -48,11 +48,15 @@ bool loadFontFromCandidates(sf::Font& font)
 
 bool loadTextureFromCandidates(sf::Texture& texture)
 {
-    const std::array<std::filesystem::path, 4> candidates = {
+    const std::array<std::filesystem::path, 8> candidates = {
         executableDirectory() / "assets/images/backgrounds/dungeon.png",
+        executableDirectory() / "assets/images/event/dungeon_background.png",
         std::filesystem::path("assets/images/backgrounds/dungeon.png"),
+        std::filesystem::path("assets/images/event/dungeon_background.png"),
         std::filesystem::path("Debug/assets/images/backgrounds/dungeon.png"),
-        std::filesystem::path("../assets/images/backgrounds/dungeon.png")};
+        std::filesystem::path("Debug/assets/images/event/dungeon_background.png"),
+        std::filesystem::path("../assets/images/backgrounds/dungeon.png"),
+        std::filesystem::path("../assets/images/event/dungeon_background.png")};
     for (const auto& path : candidates)
     {
         if (texture.loadFromFile(path)) return true;
@@ -65,7 +69,7 @@ Game::Game()
     : window_(sf::VideoMode({kWindowWidth, kWindowHeight}), "Spire Road - Act One")
 {
     window_.setFramerateLimit(60);
-    resourcesLoaded_ = loadResources();
+    fontLoaded_ = loadResources();
 }
 
 void Game::run()
@@ -440,7 +444,7 @@ void Game::drawDeckView()
     header.setFillColor(sf::Color(39, 37, 40));
     window_.draw(header);
 
-    if (resourcesLoaded_)
+    if (fontLoaded_)
     {
         UiHelpers::drawText(window_, font_, deckUpgradeMode_ ? "选择一张牌进行升级" : "牌组", 32,
                             {42.0f, 20.0f}, sf::Color(239, 211, 151));
@@ -468,7 +472,7 @@ void Game::drawDeckView()
             continue;
         }
         CardView view;
-        if (resourcesLoaded_) view.setFont(font_);
+        if (fontLoaded_) view.setFont(font_);
         const std::size_t row = index / kColumns;
         const std::size_t column = index % kColumns;
         view.setPosition({startX + column * (cardWidth + gap),
@@ -482,7 +486,7 @@ void Game::drawDeckView()
                                   105.0f + row * (cardHeight + 22.0f)});
             disabled.setFillColor(sf::Color(30, 30, 30, 135));
             window_.draw(disabled);
-            if (resourcesLoaded_)
+            if (fontLoaded_)
             {
                 UiHelpers::drawCenteredText(window_, font_, "已升级", 18,
                                             disabled.getGlobalBounds(), sf::Color(235, 220, 180));
@@ -493,7 +497,7 @@ void Game::drawDeckView()
 
 void Game::drawDeckButton()
 {
-    if (!resourcesLoaded_) return;
+    if (!fontLoaded_) return;
     UiHelpers::drawButton(window_, font_, {{1035.0f, 12.0f}, {190.0f, 46.0f}},
                           "牌组 " + std::to_string(state_.deck.size()), true, false);
 }
@@ -600,5 +604,6 @@ bool Game::loadResources()
         battleView_.setBackground(dungeonTexture_);
         roomView_.setBackground(dungeonTexture_);
     }
-    return fontLoaded && textureLoaded;
+    // 没有背景图时各视图会使用纯色背景，不能影响文字和卡牌内容显示。
+    return fontLoaded;
 }

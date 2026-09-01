@@ -1,6 +1,6 @@
 #include "ui/CardView.hpp"
 
-#include <sstream>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -23,25 +23,38 @@ sf::Text makeText(const sf::Font& font, const std::string& text,
     return drawableText;
 }
 
-// 按最大宽度把文本拆成多行，用于卡牌描述。
+std::size_t utf8CharacterLength(unsigned char firstByte)
+{
+    if ((firstByte & 0x80u) == 0) return 1;
+    if ((firstByte & 0xE0u) == 0xC0u) return 2;
+    if ((firstByte & 0xF0u) == 0xE0u) return 3;
+    if ((firstByte & 0xF8u) == 0xF0u) return 4;
+    return 1;
+}
+
+// 中文文本通常没有空格，因此按 UTF-8 字符测量并换行，而不是按单词换行。
 std::vector<std::string> wrapText(const sf::Font& font, const std::string& text,
                                   unsigned int characterSize, float maxWidth)
 {
     std::vector<std::string> lines;
-    std::istringstream words(text);
-    std::string word;
     std::string line;
 
     sf::Text measure(font, "", characterSize);
 
-    while (words >> word)
+    for (std::size_t offset = 0; offset < text.size();)
     {
-        const std::string candidate = line.empty() ? word : line + " " + word;
+        const std::size_t length = std::min(utf8CharacterLength(
+                                                static_cast<unsigned char>(text[offset])),
+                                            text.size() - offset);
+        const std::string character = text.substr(offset, length);
+        offset += length;
+
+        const std::string candidate = line + character;
         measure.setString(toSfString(candidate));
         if (!line.empty() && measure.getLocalBounds().size.x > maxWidth)
         {
             lines.push_back(line);
-            line = word;
+            line = character;
         }
         else
         {
@@ -135,6 +148,27 @@ void CardView::draw(sf::RenderWindow& window, const Card& card) const
                               nameBounds.position.x,
                           position_.y + 10.0f});
     window.draw(nameText);
+
+    // 类型徽章使用程序绘制，暂时不依赖卡牌美术资源。
+    sf::CircleShape typeBadge(15.0f, 24);
+    typeBadge.setOrigin({15.0f, 15.0f});
+    typeBadge.setPosition({position_.x + kCardWidth - 24.0f, position_.y + 24.0f});
+    typeBadge.setFillColor(card.type == CardType::Attack
+                               ? sf::Color(142, 52, 43)
+                               : card.type == CardType::Skill ? sf::Color(48, 92, 148)
+                                                              : sf::Color(135, 99, 28));
+    typeBadge.setOutlineColor(sf::Color(246, 240, 224));
+    typeBadge.setOutlineThickness(2.0f);
+    window.draw(typeBadge);
+    sf::Text typeText = makeText(*font_, card.type == CardType::Attack ? "A"
+                                                   : card.type == CardType::Skill ? "S" : "P",
+                                 15, sf::Color(250, 246, 236));
+    const sf::FloatRect typeBounds = typeText.getLocalBounds();
+    typeText.setPosition({position_.x + kCardWidth - 24.0f - typeBounds.size.x / 2.0f -
+                              typeBounds.position.x,
+                          position_.y + 24.0f - typeBounds.size.y / 2.0f -
+                              typeBounds.position.y - 1.0f});
+    window.draw(typeText);
 
     // 描述面板。
     sf::RectangleShape panel({kCardWidth - 24.0f, kCardHeight - 96.0f});
