@@ -1,6 +1,8 @@
 #include "app/Game.hpp"
 
 #include "card/CardDatabase.hpp"
+#include "ui/CardView.hpp"
+#include "ui/UiHelpers.hpp"
 
 #include <array>
 #include <filesystem>
@@ -81,7 +83,12 @@ void Game::run()
                 if (mouse->button == sf::Mouse::Button::Left)
                 {
                     const sf::Vector2f position = window_.mapPixelToCoords(mouse->position);
-                    if (scene_ == SceneType::Map) mapView_.beginPointer(position);
+                    if (scene_ == SceneType::Map &&
+                        !(position.x >= 1035.0f && position.x <= 1225.0f &&
+                          position.y >= 12.0f && position.y <= 58.0f))
+                    {
+                        mapView_.beginPointer(position);
+                    }
                     else handleClick(position);
                 }
             }
@@ -128,6 +135,20 @@ void Game::handleClick(sf::Vector2f position)
     if (scene_ == SceneType::MainMenu)
     {
         handleMenuClick(position);
+        return;
+    }
+    if (scene_ == SceneType::DeckView)
+    {
+        handleDeckClick(position);
+        return;
+    }
+    if (position.x >= 1035.0f && position.x <= 1225.0f &&
+        position.y >= 12.0f && position.y <= 58.0f)
+    {
+        deckReturnScene_ = scene_;
+        deckUpgradeMode_ = false;
+        scene_ = SceneType::DeckView;
+        return;
     }
     else if (scene_ == SceneType::Battle)
     {
@@ -201,7 +222,13 @@ void Game::handleRoomAction(int actionIndex)
         break;
     case SceneType::Rest:
         if (actionIndex == 0) state_.heal(state_.maxHealth * 3 / 10);
-        if (actionIndex == 1) state_.upgradeFirstCard();
+        if (actionIndex == 1)
+        {
+            deckReturnScene_ = SceneType::Rest;
+            deckUpgradeMode_ = true;
+            scene_ = SceneType::DeckView;
+            return;
+        }
         finishCurrentNode();
         break;
     case SceneType::Shop:
@@ -217,6 +244,8 @@ void Game::handleRoomAction(int actionIndex)
         if (actionIndex == 0) startNewRun();
         else if (actionIndex == 1) returnToMenu();
         else window_.close();
+        break;
+    case SceneType::DeckView:
         break;
     default:
         break;
@@ -237,9 +266,16 @@ void Game::draw()
     case SceneType::Battle:
         battleView_.draw(window_, combat_);
         break;
+    case SceneType::DeckView:
+        drawDeckView();
+        break;
     default:
         drawRoom();
         break;
+    }
+    if (scene_ != SceneType::MainMenu && scene_ != SceneType::DeckView)
+    {
+        drawDeckButton();
     }
     window_.display();
 }
@@ -392,6 +428,107 @@ void Game::prepareCardReward()
 void Game::returnToMenu()
 {
     scene_ = SceneType::MainMenu;
+}
+
+void Game::drawDeckView()
+{
+    sf::RectangleShape background({1280.0f, 720.0f});
+    background.setFillColor(sf::Color(24, 25, 29));
+    window_.draw(background);
+
+    sf::RectangleShape header({1280.0f, 78.0f});
+    header.setFillColor(sf::Color(39, 37, 40));
+    window_.draw(header);
+
+    if (resourcesLoaded_)
+    {
+        UiHelpers::drawText(window_, font_, deckUpgradeMode_ ? "选择一张牌进行升级" : "牌组", 32,
+                            {42.0f, 20.0f}, sf::Color(239, 211, 151));
+        UiHelpers::drawText(window_, font_, std::to_string(state_.deck.size()) + " 张牌", 20,
+                            {270.0f, 27.0f}, sf::Color(201, 195, 184));
+        UiHelpers::drawButton(window_, font_, {{1035.0f, 12.0f}, {190.0f, 46.0f}},
+                              deckUpgradeMode_ ? "返回篝火" : "返回", true, false);
+    }
+
+    constexpr std::size_t kColumns = 5;
+    const float cardWidth = CardView::getCardSize().x;
+    const float cardHeight = CardView::getCardSize().y;
+    const float gap = 18.0f;
+    const float totalWidth = kColumns * cardWidth + (kColumns - 1) * gap;
+    const float startX = (1280.0f - totalWidth) / 2.0f;
+    for (std::size_t index = 0; index < state_.deck.size(); ++index)
+    {
+        Card card;
+        try
+        {
+            card = CardDatabase::createFromInstance(state_.deck[index]);
+        }
+        catch (const std::invalid_argument&)
+        {
+            continue;
+        }
+        CardView view;
+        if (resourcesLoaded_) view.setFont(font_);
+        const std::size_t row = index / kColumns;
+        const std::size_t column = index % kColumns;
+        view.setPosition({startX + column * (cardWidth + gap),
+                          105.0f + row * (cardHeight + 22.0f)});
+        view.draw(window_, card);
+
+        if (deckUpgradeMode_ && state_.deck[index].upgraded)
+        {
+            sf::RectangleShape disabled({cardWidth, cardHeight});
+            disabled.setPosition({startX + column * (cardWidth + gap),
+                                  105.0f + row * (cardHeight + 22.0f)});
+            disabled.setFillColor(sf::Color(30, 30, 30, 135));
+            window_.draw(disabled);
+            if (resourcesLoaded_)
+            {
+                UiHelpers::drawCenteredText(window_, font_, "已升级", 18,
+                                            disabled.getGlobalBounds(), sf::Color(235, 220, 180));
+            }
+        }
+    }
+}
+
+void Game::drawDeckButton()
+{
+    if (!resourcesLoaded_) return;
+    UiHelpers::drawButton(window_, font_, {{1035.0f, 12.0f}, {190.0f, 46.0f}},
+                          "牌组 " + std::to_string(state_.deck.size()), true, false);
+}
+
+void Game::handleDeckClick(sf::Vector2f position)
+{
+    if (position.x >= 1035.0f && position.x <= 1225.0f &&
+        position.y >= 12.0f && position.y <= 58.0f)
+    {
+        scene_ = deckReturnScene_;
+        deckUpgradeMode_ = false;
+        return;
+    }
+
+    if (!deckUpgradeMode_) return;
+    const float cardWidth = CardView::getCardSize().x;
+    const float cardHeight = CardView::getCardSize().y;
+    const float gap = 18.0f;
+    const std::size_t columns = 5;
+    const float totalWidth = columns * cardWidth + (columns - 1) * gap;
+    const float startX = (1280.0f - totalWidth) / 2.0f;
+    for (std::size_t index = 0; index < state_.deck.size(); ++index)
+    {
+        const std::size_t row = index / columns;
+        const std::size_t column = index % columns;
+        const sf::FloatRect bounds{{startX + column * (cardWidth + gap),
+                                    118.0f + row * (cardHeight + 22.0f)},
+                                   {cardWidth, cardHeight}};
+        if (bounds.contains(position) && state_.upgradeCardAt(index))
+        {
+            deckUpgradeMode_ = false;
+            finishCurrentNode();
+            return;
+        }
+    }
 }
 
 std::vector<Card> Game::buildCombatDeck() const

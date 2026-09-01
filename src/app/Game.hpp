@@ -27,7 +27,8 @@ enum class SceneType
     Shop,
     Treasure,
     ActResult,
-    GameOver
+    GameOver,
+    DeckView
 };
 
 class Game
@@ -41,8 +42,11 @@ private:
     void handleMenuClick(sf::Vector2f position);
     void handleRoomClick(sf::Vector2f position);
     void handleRoomAction(int actionIndex);
+    void handleDeckClick(sf::Vector2f position);
     void draw();
     void drawRoom();
+    void drawDeckView();
+    void drawDeckButton();
     void startNewRun();
     void enterMapNode(int nodeId);
     void startCurrentBattle();
@@ -74,4 +78,6 @@ private:
     std::string roomDescription_;
     int lastRelicHealing_ = 0;
     int battleNumber_ = 0;
+    SceneType deckReturnScene_ = SceneType::Map;
+    bool deckUpgradeMode_ = false;
 };

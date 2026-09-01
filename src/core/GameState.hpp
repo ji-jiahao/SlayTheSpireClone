@@ -81,6 +81,13 @@ struct GameState
         return true;
     }
 
+    bool upgradeCardAt(std::size_t index)
+    {
+        if (index >= deck.size() || deck[index].upgraded) return false;
+        deck[index].upgraded = true;
+        return true;
+    }
+
     void increaseMaxHealth(int amount)
     {
         const int increase = std::max(0, amount);
