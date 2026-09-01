@@ -35,6 +35,10 @@ target_include_directories(card_system PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+if(MSVC)
+    target_compile_options(card_system PRIVATE /utf-8)
+endif()
+
 add_executable(SlayTheSpire
     src/main.cpp
 )
@@ -50,6 +54,9 @@ if(BUILD_TESTING)
     )
 
     target_link_libraries(CardTests PRIVATE card_system)
+    if(MSVC)
+        target_compile_options(CardTests PRIVATE /utf-8)
+    endif()
     add_test(NAME CardTests COMMAND CardTests)
 endif()
 
