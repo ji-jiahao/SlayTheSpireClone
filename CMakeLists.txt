@@ -55,20 +55,31 @@ add_library(relic_system STATIC
 target_include_directories(relic_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(relic_system PUBLIC card_system)
 
+add_library(map_system STATIC
+    src/map/MapGenerator.cpp
+    src/map/MapState.cpp
+)
+
+target_include_directories(map_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 add_library(ui STATIC
     src/ui/CardView.cpp
     src/ui/BattleView.cpp
+    src/ui/UiHelpers.cpp
+    src/ui/MainMenuView.cpp
+    src/ui/MapView.cpp
+    src/ui/RoomView.cpp
 )
 
 target_include_directories(ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ui PUBLIC card_system combat_system SFML::Graphics)
+target_link_libraries(ui PUBLIC card_system combat_system map_system SFML::Graphics)
 
 add_executable(SlayTheSpire
     src/main.cpp
     src/app/Game.cpp
 )
 
-target_link_libraries(SlayTheSpire PRIVATE combat_system relic_system ui SFML::Graphics)
+target_link_libraries(SlayTheSpire PRIVATE combat_system relic_system map_system ui SFML::Graphics)
 
 option(BUILD_TESTING "Build project tests" ON)
 enable_testing()
@@ -91,6 +102,10 @@ if(BUILD_TESTING)
     add_executable(RelicTests tests/relic_tests.cpp)
     target_link_libraries(RelicTests PRIVATE relic_system)
     add_test(NAME RelicTests COMMAND RelicTests)
+
+    add_executable(MapTests tests/map_tests.cpp)
+    target_link_libraries(MapTests PRIVATE map_system)
+    add_test(NAME MapTests COMMAND MapTests)
 endif()
 
 # Copy exactly the runtime DLLs required by the executable.
@@ -102,10 +117,8 @@ if(WIN32)
         COMMAND_EXPAND_LISTS
     )
     add_custom_command(TARGET SlayTheSpire POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-                "$<TARGET_FILE_DIR:SlayTheSpire>/assets/fonts"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/simhei.ttf"
-                "$<TARGET_FILE_DIR:SlayTheSpire>/assets/fonts/simhei.ttf"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+                "$<TARGET_FILE_DIR:SlayTheSpire>/assets"
     )
 endif()

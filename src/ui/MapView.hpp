@@ -1,34 +1,28 @@
 #pragma once
 
-#include "map/MapNode.hpp"
+#include "core/GameState.hpp"
+#include "map/MapState.hpp"
 
 #include <SFML/Graphics.hpp>
 
-#include <string>
-#include <vector>
-
-// 地图视图：绘制地图节点与连线，并把鼠标点击转换为节点 id。
-// 不决定节点类型、事件或可达性，只负责显示。
 class MapView
 {
 public:
-    MapView();
-
     void setFont(const sf::Font& font);
-
-    // 返回被点击的节点 id，未命中返回 -1。
-    int handleMouseClick(sf::Vector2f mousePosition,
-                         const std::vector<MapNode>& nodes) const;
-    void draw(sf::RenderWindow& window, const std::vector<MapNode>& nodes) const;
+    void resetScroll();
+    void beginPointer(sf::Vector2f position);
+    void updatePointer(sf::Vector2f position);
+    int endPointer(sf::Vector2f position, const MapState& map);
+    void scroll(float wheelDelta);
+    void draw(sf::RenderWindow& window, const MapState& map, const GameState& state) const;
 
 private:
-    sf::Vector2f nodePosition(const std::vector<MapNode>& nodes,
-                              const MapNode& node) const;
-    sf::FloatRect nodeBounds(const std::vector<MapNode>& nodes,
-                             const MapNode& node) const;
-    const MapNode* findNodeById(const std::vector<MapNode>& nodes, int id) const;
-    sf::Color colorForType(MapNodeType type) const;
-    std::string labelForType(MapNodeType type) const;
-
-    const sf::Font* font_;
+    sf::Vector2f nodePosition(const MapNode& node) const;
+    void clampScroll();
+    const sf::Font* font_ = nullptr;
+    float scrollOffset_ = 0.0f;
+    bool pointerDown_ = false;
+    bool pointerDragged_ = false;
+    sf::Vector2f pointerStart_;
+    sf::Vector2f pointerLast_;
 };

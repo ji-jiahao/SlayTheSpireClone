@@ -1,191 +1,214 @@
 #include "ui/MapView.hpp"
 
-#include <string>
+#include "ui/UiHelpers.hpp"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
 
 namespace
 {
-constexpr float kWindowWidth = 1280.0f;
-constexpr float kWindowHeight = 720.0f;
+constexpr float kNodeRadius = 17.0f;
+constexpr float kFloorGap = 105.0f;
+constexpr float kMapBottom = 620.0f;
+constexpr float kMapTop = 82.0f;
+constexpr float kMaxScroll = 16.0f * kFloorGap - (kMapBottom - kMapTop);
+constexpr float kDragThreshold = 6.0f;
 
-constexpr float kNodeRadius = 24.0f;
-constexpr float kRowGap = 96.0f;
-constexpr float kColumnGap = 140.0f;
-constexpr float kVerticalMargin = 90.0f;
-
-sf::String toSfString(const std::string& text)
-{
-    return sf::String::fromUtf8(text.begin(), text.end());
-}
-
-sf::Text makeText(const sf::Font& font, const std::string& text,
-                  unsigned int characterSize, sf::Color color)
-{
-    sf::Text drawableText(font, toSfString(text), characterSize);
-    drawableText.setFillColor(color);
-    return drawableText;
-}
-} // namespace
-
-MapView::MapView() : font_(nullptr) {}
-
-void MapView::setFont(const sf::Font& font)
-{
-    font_ = &font;
-}
-
-const MapNode* MapView::findNodeById(const std::vector<MapNode>& nodes, int id) const
-{
-    for (const MapNode& node : nodes)
-    {
-        if (node.id == id)
-        {
-            return &node;
-        }
-    }
-
-    return nullptr;
-}
-
-sf::Vector2f MapView::nodePosition(const std::vector<MapNode>& nodes,
-                                   const MapNode& node) const
-{
-    // 每行独立水平居中。
-    int rowNodeCount = 0;
-    for (const MapNode& other : nodes)
-    {
-        if (other.row == node.row)
-        {
-            ++rowNodeCount;
-        }
-    }
-
-    const float rowWidth =
-        static_cast<float>(rowNodeCount - 1) * kColumnGap;
-    const float startX = (kWindowWidth - rowWidth) / 2.0f;
-
-    return {startX + static_cast<float>(node.column) * kColumnGap,
-            kVerticalMargin + static_cast<float>(node.row) * kRowGap};
-}
-
-sf::FloatRect MapView::nodeBounds(const std::vector<MapNode>& nodes,
-                                  const MapNode& node) const
-{
-    const sf::Vector2f center = nodePosition(nodes, node);
-    return {{center.x - kNodeRadius, center.y - kNodeRadius},
-            {kNodeRadius * 2.0f, kNodeRadius * 2.0f}};
-}
-
-sf::Color MapView::colorForType(MapNodeType type) const
+std::string nodeLabel(MapNodeType type)
 {
     switch (type)
     {
-    case MapNodeType::Battle:
-        return sf::Color(196, 84, 70);
-    case MapNodeType::Elite:
-        return sf::Color(150, 90, 180);
-    case MapNodeType::Rest:
-        return sf::Color(220, 150, 60);
-    case MapNodeType::Shop:
-        return sf::Color(80, 140, 200);
-    case MapNodeType::Event:
-        return sf::Color(150, 150, 160);
-    case MapNodeType::Boss:
-        return sf::Color(120, 30, 30);
+    case MapNodeType::Battle: return "M";
+    case MapNodeType::Elite: return "E";
+    case MapNodeType::Rest: return "R";
+    case MapNodeType::Shop: return "$";
+    case MapNodeType::Treasure: return "T";
+    case MapNodeType::Unknown: return "?";
+    case MapNodeType::Boss: return "B";
     }
-
-    return sf::Color(150, 150, 150);
-}
-
-std::string MapView::labelForType(MapNodeType type) const
-{
-    switch (type)
-    {
-    case MapNodeType::Battle:
-        return "B";
-    case MapNodeType::Elite:
-        return "E";
-    case MapNodeType::Rest:
-        return "R";
-    case MapNodeType::Shop:
-        return "S";
-    case MapNodeType::Event:
-        return "?";
-    case MapNodeType::Boss:
-        return "BOSS";
-    }
-
     return "?";
 }
 
-int MapView::handleMouseClick(sf::Vector2f mousePosition,
-                              const std::vector<MapNode>& nodes) const
+sf::Color nodeColor(MapNodeType type)
 {
-    for (const MapNode& node : nodes)
+    switch (type)
     {
-        if (nodeBounds(nodes, node).contains(mousePosition))
+    case MapNodeType::Battle: return sf::Color(179, 68, 55);
+    case MapNodeType::Elite: return sf::Color(126, 76, 151);
+    case MapNodeType::Rest: return sf::Color(224, 140, 55);
+    case MapNodeType::Shop: return sf::Color(63, 132, 150);
+    case MapNodeType::Treasure: return sf::Color(189, 154, 62);
+    case MapNodeType::Unknown: return sf::Color(92, 96, 105);
+    case MapNodeType::Boss: return sf::Color(118, 28, 30);
+    }
+    return sf::Color::White;
+}
+}
+
+void MapView::setFont(const sf::Font& font) { font_ = &font; }
+
+void MapView::resetScroll()
+{
+    scrollOffset_ = 0.0f;
+    pointerDown_ = false;
+    pointerDragged_ = false;
+}
+
+void MapView::beginPointer(sf::Vector2f position)
+{
+    pointerDown_ = position.x >= 340.0f && position.x <= 940.0f;
+    pointerDragged_ = false;
+    pointerStart_ = position;
+    pointerLast_ = position;
+}
+
+void MapView::updatePointer(sf::Vector2f position)
+{
+    if (!pointerDown_) return;
+    const sf::Vector2f fromStart = position - pointerStart_;
+    if (std::abs(fromStart.x) >= kDragThreshold || std::abs(fromStart.y) >= kDragThreshold)
+    {
+        pointerDragged_ = true;
+    }
+    scrollOffset_ += position.y - pointerLast_.y;
+    pointerLast_ = position;
+    clampScroll();
+}
+
+int MapView::endPointer(sf::Vector2f position, const MapState& map)
+{
+    if (!pointerDown_) return -1;
+    pointerDown_ = false;
+    if (pointerDragged_)
+    {
+        pointerDragged_ = false;
+        return -1;
+    }
+
+    for (const MapNode& node : map.getNodes())
+    {
+        const sf::Vector2f center = nodePosition(node);
+        const float dx = position.x - center.x;
+        const float dy = position.y - center.y;
+        if (map.isReachable(node.id) && dx * dx + dy * dy <= 26.0f * 26.0f)
         {
             return node.id;
         }
     }
-
     return -1;
 }
 
-void MapView::draw(sf::RenderWindow& window, const std::vector<MapNode>& nodes) const
+void MapView::scroll(float wheelDelta)
 {
-    sf::RectangleShape background({kWindowWidth, kWindowHeight});
-    background.setFillColor(sf::Color(28, 31, 37));
+    scrollOffset_ += wheelDelta * 80.0f;
+    clampScroll();
+}
+
+void MapView::clampScroll()
+{
+    scrollOffset_ = std::clamp(scrollOffset_, 0.0f, kMaxScroll);
+}
+
+sf::Vector2f MapView::nodePosition(const MapNode& node) const
+{
+    constexpr std::array<float, 3> columns{520.0f, 640.0f, 760.0f};
+    const float x = node.column < 3 ? columns[static_cast<std::size_t>(node.column)] : 640.0f;
+    const float y = kMapBottom - static_cast<float>(node.row) * kFloorGap + scrollOffset_;
+    return {x, y};
+}
+
+void MapView::draw(sf::RenderWindow& window, const MapState& map, const GameState& state) const
+{
+    sf::RectangleShape background({1280.0f, 720.0f});
+    background.setFillColor(sf::Color(26, 25, 29));
     window.draw(background);
 
-    // 连线。
-    sf::VertexArray edges(sf::PrimitiveType::Lines);
-    for (const MapNode& node : nodes)
+    sf::RectangleShape leftBand({340.0f, 720.0f});
+    leftBand.setFillColor(sf::Color(38, 35, 38));
+    window.draw(leftBand);
+    sf::RectangleShape rightBand({340.0f, 720.0f});
+    rightBand.setPosition({940.0f, 0.0f});
+    rightBand.setFillColor(sf::Color(38, 35, 38));
+    window.draw(rightBand);
+
+    for (const MapNode& node : map.getNodes())
     {
-        const sf::Vector2f from = nodePosition(nodes, node);
-        for (const int nextId : node.nextNodeIds)
+        for (int targetId : node.nextNodeIds)
         {
-            const MapNode* target = findNodeById(nodes, nextId);
-            if (target == nullptr)
+            const auto& nodes = map.getNodes();
+            const auto target = std::find_if(nodes.begin(), nodes.end(), [targetId](const MapNode& item) {
+                return item.id == targetId;
+            });
+            if (target == nodes.end()) continue;
+            const sf::Vector2f from = nodePosition(node);
+            const sf::Vector2f to = nodePosition(*target);
+            if ((from.y < 60.0f && to.y < 60.0f) || (from.y > 700.0f && to.y > 700.0f))
             {
                 continue;
             }
-
-            const sf::Vector2f to = nodePosition(nodes, *target);
-            sf::Vertex vertexFrom;
-            vertexFrom.position = from;
-            vertexFrom.color = sf::Color(120, 120, 130);
-            edges.append(vertexFrom);
-
-            sf::Vertex vertexTo;
-            vertexTo.position = to;
-            vertexTo.color = sf::Color(120, 120, 130);
-            edges.append(vertexTo);
+            const sf::Vector2f delta = to - from;
+            const float length = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+            sf::RectangleShape edge({length, 2.0f});
+            edge.setOrigin({0.0f, 1.0f});
+            edge.setPosition(from);
+            edge.setRotation(sf::radians(std::atan2(delta.y, delta.x)));
+            edge.setFillColor(sf::Color(99, 91, 82));
+            window.draw(edge);
         }
     }
-    window.draw(edges);
 
-    // 节点。
-    for (const MapNode& node : nodes)
+    for (const MapNode& node : map.getNodes())
     {
-        const sf::Vector2f center = nodePosition(nodes, node);
-
-        sf::CircleShape circle(kNodeRadius, 32);
+        const bool reachable = map.isReachable(node.id);
+        const bool completed = map.isCompleted(node.id);
+        const sf::Vector2f position = nodePosition(node);
+        if (position.y < 62.0f || position.y > 700.0f) continue;
+        sf::CircleShape circle(kNodeRadius, 28);
         circle.setOrigin({kNodeRadius, kNodeRadius});
-        circle.setPosition(center);
-        circle.setFillColor(colorForType(node.type));
-        circle.setOutlineColor(sf::Color(20, 20, 24));
-        circle.setOutlineThickness(3.0f);
+        circle.setPosition(position);
+        circle.setFillColor(completed ? sf::Color(55, 55, 58) : nodeColor(node.type));
+        circle.setOutlineColor(reachable ? sf::Color(250, 213, 112) : sf::Color(25, 24, 26));
+        circle.setOutlineThickness(reachable ? 5.0f : 2.0f);
         window.draw(circle);
-
         if (font_ != nullptr)
         {
-            const std::string label = labelForType(node.type);
-            const unsigned int size = label == "BOSS" ? 16 : 24;
-            sf::Text text = makeText(*font_, label, size, sf::Color(250, 246, 236));
-            const sf::FloatRect textBounds = text.getLocalBounds();
-            text.setPosition({center.x - textBounds.size.x / 2.0f - textBounds.position.x,
-                              center.y - textBounds.size.y / 2.0f - textBounds.position.y});
-            window.draw(text);
+            UiHelpers::drawCenteredText(window, *font_, completed ? "✓" : nodeLabel(node.type),
+                                        17, {{position.x - kNodeRadius,
+                                              position.y - kNodeRadius},
+                                             {kNodeRadius * 2.0f, kNodeRadius * 2.0f}},
+                                        sf::Color(248, 239, 219));
         }
+    }
+
+    if (font_ != nullptr)
+    {
+        UiHelpers::drawText(window, *font_, "第一幕路线", 34, {55.0f, 52.0f},
+                            sf::Color(236, 202, 126));
+        UiHelpers::drawText(window, *font_, "生命  " + std::to_string(state.currentHealth) + "/" +
+                                                   std::to_string(state.maxHealth),
+                            22, {55.0f, 120.0f}, sf::Color(224, 105, 91));
+        UiHelpers::drawText(window, *font_, "金币  " + std::to_string(state.gold), 22,
+                            {55.0f, 158.0f}, sf::Color(238, 199, 90));
+        UiHelpers::drawText(window, *font_, "牌组  " + std::to_string(state.deck.size()) + " 张", 22,
+                            {55.0f, 196.0f}, sf::Color(190, 205, 215));
+        UiHelpers::drawText(window, *font_, "遗物  " + std::to_string(state.relicIds.size()) + " 件", 22,
+                            {55.0f, 234.0f}, sf::Color(184, 173, 229));
+        UiHelpers::drawText(window, *font_, "按住地图上下拖动", 18, {55.0f, 598.0f},
+                            sf::Color(185, 180, 173));
+        UiHelpers::drawText(window, *font_, "滚轮也可浏览楼层", 18, {55.0f, 630.0f},
+                            sf::Color(185, 180, 173));
+        UiHelpers::drawText(window, *font_, "发光节点可前往", 18, {55.0f, 662.0f},
+                            sf::Color(185, 180, 173));
+
+        const float progress = kMaxScroll > 0.0f ? scrollOffset_ / kMaxScroll : 0.0f;
+        sf::RectangleShape track({4.0f, 520.0f});
+        track.setPosition({910.0f, 92.0f});
+        track.setFillColor(sf::Color(75, 72, 72));
+        window.draw(track);
+        sf::RectangleShape thumb({8.0f, 70.0f});
+        thumb.setPosition({908.0f, 542.0f - progress * 450.0f});
+        thumb.setFillColor(sf::Color(218, 180, 101));
+        window.draw(thumb);
     }
 }
