@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# 源码包含 UTF-8 中文界面文字。
+add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+
 # 优先复用仓库旁边已下载的 VS2022 x64 版 SFML 3.0.1。
 set(LOCAL_SFML_DIR "${CMAKE_CURRENT_SOURCE_DIR}/SFML-3.0.1-vc17/SFML-3.0.1")
 
@@ -35,15 +38,18 @@ target_include_directories(card_system PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-if(MSVC)
-    target_compile_options(card_system PRIVATE /utf-8)
-endif()
+add_library(ui STATIC
+    src/ui/CardView.cpp
+)
+
+target_include_directories(ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(ui PUBLIC card_system SFML::Graphics)
 
 add_executable(SlayTheSpire
     src/main.cpp
 )
 
-target_link_libraries(SlayTheSpire PRIVATE card_system SFML::Graphics)
+target_link_libraries(SlayTheSpire PRIVATE card_system ui SFML::Graphics)
 
 option(BUILD_TESTING "Build the card module tests" ON)
 enable_testing()
