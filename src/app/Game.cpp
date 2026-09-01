@@ -1,163 +1,467 @@
 #include "app/Game.hpp"
 
+#include "card/CardDatabase.hpp"
+
 #include <array>
 #include <filesystem>
+#include <stdexcept>
+
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 
 namespace
 {
 constexpr unsigned int kWindowWidth = 1280;
 constexpr unsigned int kWindowHeight = 720;
 
-sf::String toSfString(const std::string& text)
+std::filesystem::path executableDirectory()
 {
-    return sf::String::fromUtf8(text.begin(), text.end());
+#ifdef _WIN32
+    std::wstring buffer(32768, L'\0');
+    const DWORD length = GetModuleFileNameW(nullptr, buffer.data(),
+                                            static_cast<DWORD>(buffer.size()));
+    if (length > 0 && length < buffer.size())
+    {
+        buffer.resize(length);
+        return std::filesystem::path(buffer).parent_path();
+    }
+#endif
+    return std::filesystem::current_path();
+}
+
+bool loadFontFromCandidates(sf::Font& font)
+{
+    const std::array<std::filesystem::path, 4> candidates = {
+        executableDirectory() / "assets/fonts/simhei.ttf",
+        std::filesystem::path("assets/fonts/simhei.ttf"),
+        std::filesystem::path("Debug/assets/fonts/simhei.ttf"),
+        std::filesystem::path("../assets/fonts/simhei.ttf")};
+    for (const auto& path : candidates)
+    {
+        if (font.openFromFile(path)) return true;
+    }
+    return false;
+}
+
+bool loadTextureFromCandidates(sf::Texture& texture)
+{
+    const std::array<std::filesystem::path, 4> candidates = {
+        executableDirectory() / "assets/images/backgrounds/dungeon.png",
+        std::filesystem::path("assets/images/backgrounds/dungeon.png"),
+        std::filesystem::path("Debug/assets/images/backgrounds/dungeon.png"),
+        std::filesystem::path("../assets/images/backgrounds/dungeon.png")};
+    for (const auto& path : candidates)
+    {
+        if (texture.loadFromFile(path)) return true;
+    }
+    return false;
 }
 }
 
 Game::Game()
-    : window(sf::VideoMode({kWindowWidth, kWindowHeight}), "Slay the Spire Clone"),
-      fontLoaded(false), handledResult(BattleResult::Active), relicHealing(0)
+    : window_(sf::VideoMode({kWindowWidth, kWindowHeight}), "Spire Road - Act One")
 {
-    fontLoaded = loadFont();
-    window.setFramerateLimit(60);
-    if (fontLoaded)
-    {
-        battleView.setFont(font);
-    }
-    startBattle();
+    window_.setFramerateLimit(60);
+    resourcesLoaded_ = loadResources();
 }
 
 void Game::run()
 {
-    while (window.isOpen())
+    while (window_.isOpen())
     {
-        while (const auto event = window.pollEvent())
+        while (const auto event = window_.pollEvent())
         {
             if (event->is<sf::Event::Closed>())
             {
-                window.close();
+                window_.close();
             }
             else if (const auto* mouse = event->getIf<sf::Event::MouseButtonPressed>())
             {
-                if (mouse->button == sf::Mouse::Button::Left &&
-                    combat.getResult() == BattleResult::Active)
+                if (mouse->button == sf::Mouse::Button::Left)
                 {
-                    battleView.handleMouseClick(window.mapPixelToCoords(mouse->position), combat);
-                    handleBattleResult();
+                    const sf::Vector2f position = window_.mapPixelToCoords(mouse->position);
+                    if (scene_ == SceneType::Map) mapView_.beginPointer(position);
+                    else handleClick(position);
                 }
+            }
+            else if (const auto* mouse = event->getIf<sf::Event::MouseMoved>())
+            {
+                if (scene_ == SceneType::Map)
+                {
+                    mapView_.updatePointer(window_.mapPixelToCoords(mouse->position));
+                }
+            }
+            else if (const auto* mouse = event->getIf<sf::Event::MouseButtonReleased>())
+            {
+                if (scene_ == SceneType::Map && mouse->button == sf::Mouse::Button::Left)
+                {
+                    const int nodeId = mapView_.endPointer(
+                        window_.mapPixelToCoords(mouse->position), mapState_);
+                    if (nodeId >= 0) enterMapNode(nodeId);
+                }
+            }
+            else if (const auto* wheel = event->getIf<sf::Event::MouseWheelScrolled>())
+            {
+                if (scene_ == SceneType::Map) mapView_.scroll(wheel->delta);
             }
             else if (const auto* key = event->getIf<sf::Event::KeyPressed>())
             {
-                if (key->code == sf::Keyboard::Key::R &&
-                    combat.getResult() != BattleResult::Active)
+                if (key->code == sf::Keyboard::Key::Escape && scene_ == SceneType::Map)
                 {
-                    if (combat.getResult() == BattleResult::Defeat)
-                    {
-                        state.currentHealth = state.maxHealth;
-                    }
-                    startBattle();
+                    returnToMenu();
                 }
             }
         }
 
-        combat.update();
-        handleBattleResult();
-        window.clear(sf::Color(35, 38, 42));
-        battleView.draw(window, combat);
-        drawResultOverlay();
-        window.display();
+        if (scene_ == SceneType::Battle)
+        {
+            combat_.update();
+            handleBattleResult();
+        }
+        draw();
     }
 }
 
-void Game::startBattle()
+void Game::handleClick(sf::Vector2f position)
 {
-    relicSystem.beginBattle();
-    handledResult = BattleResult::Active;
-    relicHealing = 0;
-    statusMessage.clear();
-    combat.startBattle(state.currentHealth);
+    if (scene_ == SceneType::MainMenu)
+    {
+        handleMenuClick(position);
+    }
+    else if (scene_ == SceneType::Battle)
+    {
+        battleView_.handleMouseClick(position, combat_);
+        handleBattleResult();
+    }
+    else
+    {
+        handleRoomClick(position);
+    }
+}
+
+void Game::handleMenuClick(sf::Vector2f position)
+{
+    switch (mainMenuView_.handleMouseClick(position))
+    {
+    case MainMenuView::Action::Start:
+        startNewRun();
+        break;
+    case MainMenuView::Action::Quit:
+        window_.close();
+        break;
+    case MainMenuView::Action::None:
+        break;
+    }
+}
+
+void Game::handleRoomClick(sf::Vector2f position)
+{
+    const int action = roomView_.handleMouseClick(position, currentActions());
+    if (action >= 0) handleRoomAction(action);
+}
+
+void Game::handleRoomAction(int actionIndex)
+{
+    switch (scene_)
+    {
+    case SceneType::Intro:
+        if (actionIndex == 0) state_.gainGold(50);
+        if (actionIndex == 1) relicSystem_.obtainRelic(state_, "anchor");
+        scene_ = SceneType::Map;
+        break;
+    case SceneType::CardReward:
+        if (actionIndex >= 0 && actionIndex < static_cast<int>(rewardCards_.size()))
+        {
+            state_.addCard(rewardCards_[static_cast<std::size_t>(actionIndex)].id);
+        }
+        finishCurrentNode();
+        break;
+    case SceneType::Event:
+        if (actionIndex == 0)
+        {
+            state_.loseHealth(6);
+            state_.gainGold(75);
+        }
+        else if (actionIndex == 1)
+        {
+            state_.heal(12);
+        }
+        if (state_.currentHealth <= 0)
+        {
+            scene_ = SceneType::GameOver;
+            roomEyebrow_ = "挑战失败";
+            roomTitle_ = "你倒在了事件房间";
+            roomDescription_ = "尖塔不会宽恕鲁莽的选择。";
+        }
+        else
+        {
+            finishCurrentNode();
+        }
+        break;
+    case SceneType::Rest:
+        if (actionIndex == 0) state_.heal(state_.maxHealth * 3 / 10);
+        if (actionIndex == 1) state_.upgradeFirstCard();
+        finishCurrentNode();
+        break;
+    case SceneType::Shop:
+        if (actionIndex == 0 && state_.spendGold(50)) state_.addCard("iron_wave");
+        if (actionIndex == 1 && state_.spendGold(75)) state_.removeFirstCard("strike");
+        finishCurrentNode();
+        break;
+    case SceneType::Treasure:
+        finishCurrentNode();
+        break;
+    case SceneType::ActResult:
+    case SceneType::GameOver:
+        if (actionIndex == 0) startNewRun();
+        else if (actionIndex == 1) returnToMenu();
+        else window_.close();
+        break;
+    default:
+        break;
+    }
+}
+
+void Game::draw()
+{
+    window_.clear(sf::Color(20, 20, 23));
+    switch (scene_)
+    {
+    case SceneType::MainMenu:
+        mainMenuView_.draw(window_);
+        break;
+    case SceneType::Map:
+        mapView_.draw(window_, mapState_, state_);
+        break;
+    case SceneType::Battle:
+        battleView_.draw(window_, combat_);
+        break;
+    default:
+        drawRoom();
+        break;
+    }
+    window_.display();
+}
+
+void Game::drawRoom()
+{
+    roomView_.draw(window_, state_, roomEyebrow_, roomTitle_, roomDescription_, currentActions());
+}
+
+void Game::startNewRun()
+{
+    state_.reset();
+    mapState_.reset(mapGenerator_.generateActOne(state_.seed));
+    mapView_.resetScroll();
+    battleNumber_ = 0;
+    lastRelicHealing_ = 0;
+    roomEyebrow_ = "来自鲸鱼的低语";
+    roomTitle_ = "又一位挑战者";
+    roomDescription_ = "在踏入第一幕前，选择一份启程赠礼。";
+    scene_ = SceneType::Intro;
+}
+
+void Game::enterMapNode(int nodeId)
+{
+    if (!mapState_.chooseNode(nodeId)) return;
+    const MapNode* node = mapState_.getCurrentNode();
+    if (node == nullptr) return;
+
+    switch (node->type)
+    {
+    case MapNodeType::Battle:
+    case MapNodeType::Elite:
+    case MapNodeType::Boss:
+        startCurrentBattle();
+        break;
+    case MapNodeType::Unknown:
+        roomEyebrow_ = "未知房间";
+        roomTitle_ = "被遗忘的祭坛";
+        roomDescription_ = "石台上散落着金币，旁边的泉水仍泛着微光。";
+        scene_ = SceneType::Event;
+        break;
+    case MapNodeType::Rest:
+        roomEyebrow_ = "篝火";
+        roomTitle_ = "片刻喘息";
+        roomDescription_ = "火焰温暖而安静。你只能选择一项行动。";
+        scene_ = SceneType::Rest;
+        break;
+    case MapNodeType::Shop:
+        roomEyebrow_ = "商店";
+        roomTitle_ = "商人的货架";
+        roomDescription_ = "花费金币强化牌组，或直接离开。";
+        scene_ = SceneType::Shop;
+        break;
+    case MapNodeType::Treasure:
+        if (state_.relicIds.size() % 2 == 1) relicSystem_.obtainRelic(state_, "vajra");
+        else relicSystem_.obtainRelic(state_, "lantern");
+        roomEyebrow_ = "宝箱";
+        roomTitle_ = state_.relicIds.back() == "vajra" ? "获得遗物：金刚杵" : "获得遗物：灯笼";
+        roomDescription_ = state_.relicIds.back() == "vajra"
+                               ? "之后的战斗开始时获得 1 点力量。"
+                               : "之后每场战斗的第一回合获得 1 点能量。";
+        scene_ = SceneType::Treasure;
+        break;
+    }
+}
+
+void Game::startCurrentBattle()
+{
+    const MapNode* node = mapState_.getCurrentNode();
+    if (node == nullptr) return;
+    ++battleNumber_;
+    const int floor = node->row + 1;
+    EncounterDefinition encounter;
+    if (node->type == MapNodeType::Elite)
+    {
+        encounter = {"乐加维林", 55 + floor, 10};
+    }
+    else if (node->type == MapNodeType::Boss)
+    {
+        encounter = {"史莱姆老大", 85, 12};
+    }
+    else
+    {
+        const std::array<std::string, 4> names{"邪教徒", "下颚虫", "酸液史莱姆", "真菌兽"};
+        encounter = {names[static_cast<std::size_t>(battleNumber_ % names.size())],
+                     30 + floor * 2, 5 + floor / 4};
+    }
+
+    relicSystem_.beginBattle();
+    const RelicBattleStartModifiers modifiers = relicSystem_.applyBattleStart(state_);
+    combat_.startBattle(state_.currentHealth, state_.seed + battleNumber_, buildCombatDeck(),
+                        encounter, modifiers.block, modifiers.strength, modifiers.energy,
+                        modifiers.drawCards, state_.maxHealth);
+    scene_ = SceneType::Battle;
+}
+
+void Game::finishCurrentNode()
+{
+    mapState_.completeCurrentNode();
+    if (mapState_.isActComplete())
+    {
+        roomEyebrow_ = "第一幕完成";
+        roomTitle_ = "你穿过了高塔的底层";
+        roomDescription_ = "生命、金币、牌组和遗物均已保留。第一幕旅程至此结算。";
+        scene_ = SceneType::ActResult;
+    }
+    else
+    {
+        scene_ = SceneType::Map;
+    }
 }
 
 void Game::handleBattleResult()
 {
-    const BattleResult result = combat.getResult();
-    if (result == BattleResult::Active || result == handledResult)
+    if (combat_.getResult() == BattleResult::Active) return;
+    if (combat_.getResult() == BattleResult::Defeat)
     {
+        state_.currentHealth = 0;
+        roomEyebrow_ = "挑战失败";
+        roomTitle_ = "铁甲战士倒下了";
+        roomDescription_ = "你可以立即开始新游戏，或返回主菜单。";
+        scene_ = SceneType::GameOver;
         return;
     }
 
-    handledResult = result;
-    if (result == BattleResult::Victory)
-    {
-        state.currentHealth = combat.getPlayer().getCurrentHealth();
-        relicHealing = relicSystem.applyBattleVictory(state);
-        statusMessage = "战斗胜利";
-    }
-    else
-    {
-        statusMessage = "战斗失败";
-    }
+    state_.currentHealth = combat_.getPlayer().getCurrentHealth();
+    lastRelicHealing_ = relicSystem_.applyBattleVictory(state_);
+    const MapNode* node = mapState_.getCurrentNode();
+    const int goldReward = node != nullptr && node->type == MapNodeType::Elite ? 35 : 20;
+    state_.gainGold(goldReward);
+    prepareCardReward();
+    roomEyebrow_ = "战斗胜利";
+    roomTitle_ = "选择一张卡牌奖励";
+    roomDescription_ = "获得 " + std::to_string(goldReward) + " 金币。燃烧之血回复 " +
+                       std::to_string(lastRelicHealing_) + " 点生命。";
+    scene_ = SceneType::CardReward;
 }
 
-void Game::drawResultOverlay()
+void Game::prepareCardReward()
 {
-    if (combat.getResult() == BattleResult::Active)
-    {
-        return;
-    }
-
-    sf::RectangleShape overlay({560.0f, 210.0f});
-    overlay.setPosition({360.0f, 230.0f});
-    overlay.setFillColor(sf::Color(22, 24, 28, 235));
-    overlay.setOutlineColor(sf::Color(230, 174, 72));
-    overlay.setOutlineThickness(3.0f);
-    window.draw(overlay);
-
-    if (!fontLoaded)
-    {
-        return;
-    }
-
-    sf::Text title(font, toSfString(statusMessage), 40);
-    title.setFillColor(sf::Color(245, 220, 150));
-    title.setPosition({510.0f, 260.0f});
-    window.draw(title);
-
-    std::string detail;
-    if (combat.getResult() == BattleResult::Victory)
-    {
-        detail = "燃烧之血回复 " + std::to_string(relicHealing) + " 点生命  当前生命 " +
-                 std::to_string(state.currentHealth) + "/" + std::to_string(state.maxHealth);
-    }
-    else
-    {
-        detail = "本次挑战结束";
-    }
-
-    sf::Text detailText(font, toSfString(detail), 22);
-    detailText.setFillColor(sf::Color(235, 229, 207));
-    detailText.setPosition({430.0f, 335.0f});
-    window.draw(detailText);
-
-    sf::Text restart(font, toSfString("按 R 重新战斗"), 22);
-    restart.setFillColor(sf::Color(210, 210, 210));
-    restart.setPosition({545.0f, 390.0f});
-    window.draw(restart);
+    static const std::array<std::array<const char*, 3>, 3> choices{{
+        {{"cleave", "iron_wave", "shrug_it_off"}},
+        {{"pommel_strike", "twin_strike", "clothesline"}},
+        {{"anger", "true_grit", "flex"}}}};
+    const auto& ids = choices[static_cast<std::size_t>(battleNumber_ % choices.size())];
+    rewardCards_.clear();
+    for (const char* id : ids) rewardCards_.push_back(CardDatabase::createById(id));
 }
 
-bool Game::loadFont()
+void Game::returnToMenu()
 {
-    const std::array<std::filesystem::path, 3> candidates = {
-        std::filesystem::path("assets/fonts/simhei.ttf"),
-        std::filesystem::path("Debug/assets/fonts/simhei.ttf"),
-        std::filesystem::path("../assets/fonts/simhei.ttf")};
+    scene_ = SceneType::MainMenu;
+}
 
-    for (const auto& path : candidates)
+std::vector<Card> Game::buildCombatDeck() const
+{
+    std::vector<Card> result;
+    result.reserve(state_.deck.size());
+    for (const CardInstance& instance : state_.deck)
     {
-        if (font.openFromFile(path))
+        try
         {
-            return true;
+            result.push_back(CardDatabase::createFromInstance(instance));
+        }
+        catch (const std::invalid_argument&)
+        {
         }
     }
-    return false;
+    return result.empty() ? CardDatabase::createStarterDeck() : result;
+}
+
+std::vector<RoomAction> Game::currentActions() const
+{
+    switch (scene_)
+    {
+    case SceneType::Intro:
+        return {{"获得 50 金币", "从 99 金币开始变为 149"},
+                {"获得遗物：锚", "每场战斗开始获得 10 格挡"}};
+    case SceneType::CardReward:
+    {
+        std::vector<RoomAction> actions;
+        for (const Card& card : rewardCards_) actions.push_back({card.name, card.description});
+        actions.push_back({"跳过", "不添加卡牌"});
+        return actions;
+    }
+    case SceneType::Event:
+        return {{"献上 6 点生命", "获得 75 金币"},
+                {"饮用泉水", "回复 12 点生命"}, {"离开", "不发生任何事"}};
+    case SceneType::Rest:
+        return {{"休息", "回复最大生命的 30%"},
+                {"锻造", "升级牌组中第一张未升级卡牌"}};
+    case SceneType::Shop:
+        return {{"购买铁波", "50 金币", state_.gold >= 50},
+                {"移除一张打击", "75 金币", state_.gold >= 75},
+                {"离开", "保留金币"}};
+    case SceneType::Treasure:
+        return {{"收下遗物并返回地图", "遗物效果将在后续战斗生效"}};
+    case SceneType::ActResult:
+        return {{"再来一局", "重新生成第一幕"}, {"返回主菜单", ""}, {"结束游戏", ""}};
+    case SceneType::GameOver:
+        return {{"重新开始", "建立新的第一幕存档"}, {"返回主菜单", ""}, {"结束游戏", ""}};
+    default:
+        return {};
+    }
+}
+
+bool Game::loadResources()
+{
+    const bool fontLoaded = loadFontFromCandidates(font_);
+    const bool textureLoaded = loadTextureFromCandidates(dungeonTexture_);
+    if (fontLoaded)
+    {
+        mainMenuView_.setFont(font_);
+        mapView_.setFont(font_);
+        battleView_.setFont(font_);
+        roomView_.setFont(font_);
+    }
+    if (textureLoaded)
+    {
+        mainMenuView_.setBackground(dungeonTexture_);
+        battleView_.setBackground(dungeonTexture_);
+        roomView_.setBackground(dungeonTexture_);
+    }
+    return fontLoaded && textureLoaded;
 }
