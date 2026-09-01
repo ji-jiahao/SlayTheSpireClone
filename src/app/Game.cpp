@@ -351,21 +351,23 @@ void Game::startCurrentBattle()
     const MapNode* node = mapState_.getCurrentNode();
     if (node == nullptr) return;
     ++battleNumber_;
-    const int floor = node->row + 1;
     EncounterDefinition encounter;
     if (node->type == MapNodeType::Elite)
     {
-        encounter = {"乐加维林", 55 + floor, 10};
+        encounter = {"lagavulin", "乐加维林", 110, 18};
     }
     else if (node->type == MapNodeType::Boss)
     {
-        encounter = {"史莱姆老大", 85, 12};
+        encounter = {"slime_boss", "史莱姆老大", 140, 35};
     }
     else
     {
-        const std::array<std::string, 4> names{"邪教徒", "下颚虫", "酸液史莱姆", "真菌兽"};
-        encounter = {names[static_cast<std::size_t>(battleNumber_ % names.size())],
-                     30 + floor * 2, 5 + floor / 4};
+        const std::array<EncounterDefinition, 4> encounters{{
+            {"cultist", "邪教徒", 50, 6},
+            {"jaw_worm", "颚虫", 42, 11},
+            {"acid_slime", "酸液史莱姆", 30, 10},
+            {"fungi_beast", "真菌兽", 25, 6}}};
+        encounter = encounters[static_cast<std::size_t>(battleNumber_ % encounters.size())];
     }
 
     relicSystem_.beginBattle();

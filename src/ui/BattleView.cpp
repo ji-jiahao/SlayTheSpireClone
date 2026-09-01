@@ -74,6 +74,65 @@ void drawStatusBadge(sf::RenderWindow& window, const sf::Font& font,
     valueText.setPosition({position.x + 18.0f, position.y - 10.0f});
     window.draw(valueText);
 }
+
+sf::Color intentColor(EnemyIntentType type)
+{
+    switch (type)
+    {
+    case EnemyIntentType::Attack:
+    case EnemyIntentType::AttackDefend:
+        return sf::Color(178, 65, 54);
+    case EnemyIntentType::DefendBuff:
+    case EnemyIntentType::Buff:
+        return sf::Color(173, 118, 42);
+    case EnemyIntentType::Debuff:
+        return sf::Color(104, 78, 151);
+    case EnemyIntentType::Status:
+    case EnemyIntentType::Composite:
+        return sf::Color(74, 126, 116);
+    case EnemyIntentType::Split:
+        return sf::Color(151, 80, 120);
+    default:
+        return sf::Color(92, 99, 112);
+    }
+}
+
+std::string intentSymbol(EnemyIntentType type)
+{
+    switch (type)
+    {
+    case EnemyIntentType::Attack: return "攻";
+    case EnemyIntentType::AttackDefend: return "攻";
+    case EnemyIntentType::DefendBuff: return "盾";
+    case EnemyIntentType::Buff: return "强";
+    case EnemyIntentType::Debuff: return "弱";
+    case EnemyIntentType::Status: return "牌";
+    case EnemyIntentType::Sleep: return "眠";
+    case EnemyIntentType::Stunned: return "晕";
+    case EnemyIntentType::Preparing: return "蓄";
+    case EnemyIntentType::Split: return "分";
+    case EnemyIntentType::Composite: return "复";
+    }
+    return "?";
+}
+
+void drawIntentBadge(sf::RenderWindow& window, const sf::Font& font,
+                     sf::Vector2f center, EnemyIntentType type)
+{
+    sf::CircleShape badge(24.0f, 24);
+    badge.setOrigin({24.0f, 24.0f});
+    badge.setPosition(center);
+    badge.setFillColor(intentColor(type));
+    badge.setOutlineColor(sf::Color(240, 216, 160));
+    badge.setOutlineThickness(2.0f);
+    window.draw(badge);
+
+    sf::Text symbol = makeText(font, intentSymbol(type), 21, sf::Color(250, 246, 236));
+    const sf::FloatRect bounds = symbol.getLocalBounds();
+    symbol.setPosition({center.x - bounds.size.x / 2.0f - bounds.position.x,
+                        center.y - bounds.size.y / 2.0f - bounds.position.y - 2.0f});
+    window.draw(symbol);
+}
 } // namespace
 
 BattleView::BattleView() : font_(nullptr), background_(nullptr) {}
@@ -167,15 +226,31 @@ void BattleView::draw(sf::RenderWindow& window, const CombatSystem& combat) cons
     playerBody.setOutlineThickness(4.0f);
     window.draw(playerBody);
 
-    sf::CircleShape enemyBody(75.0f, 7);
-    enemyBody.setPosition({950.0f, 235.0f});
-    enemyBody.setFillColor(sf::Color(58, 50, 70, 235));
-    enemyBody.setOutlineColor(sf::Color(183, 95, 84));
-    enemyBody.setOutlineThickness(4.0f);
-    window.draw(enemyBody);
+    if (combat.getEnemy().getArchetype() == EnemyArchetype::SlimePair)
+    {
+        for (int index = 0; index < 2; ++index)
+        {
+            sf::CircleShape slime(58.0f, 22);
+            slime.setPosition({900.0f + index * 128.0f, 270.0f - index * 18.0f});
+            slime.setFillColor(index == 0 ? sf::Color(87, 148, 89, 235)
+                                          : sf::Color(120, 94, 151, 235));
+            slime.setOutlineColor(sf::Color(210, 176, 112));
+            slime.setOutlineThickness(4.0f);
+            window.draw(slime);
+        }
+    }
+    else
+    {
+        sf::CircleShape enemyBody(75.0f, 7);
+        enemyBody.setPosition({950.0f, 235.0f});
+        enemyBody.setFillColor(sf::Color(58, 50, 70, 235));
+        enemyBody.setOutlineColor(sf::Color(183, 95, 84));
+        enemyBody.setOutlineThickness(4.0f);
+        window.draw(enemyBody);
+    }
 
     drawPlayerPanel(window, combat.getPlayer());
-    drawEnemyPanel(window, combat.getEnemy());
+    drawEnemyPanel(window, combat.getEnemy(), combat.getEnemyIntentDamage());
     drawHand(window, combat.getHandCards());
     drawEndTurnButton(window);
 
@@ -193,8 +268,8 @@ void BattleView::draw(sf::RenderWindow& window, const CombatSystem& combat) cons
 
 void BattleView::drawPlayerPanel(sf::RenderWindow& window, const Player& player) const
 {
-    sf::RectangleShape panel({380.0f, 150.0f});
-    panel.setPosition({40.0f, 40.0f});
+    sf::RectangleShape panel({400.0f, 180.0f});
+    panel.setPosition({30.0f, 24.0f});
     panel.setFillColor(sf::Color(48, 52, 58));
     panel.setOutlineColor(sf::Color(40, 32, 26));
     panel.setOutlineThickness(2.0f);
@@ -206,46 +281,51 @@ void BattleView::drawPlayerPanel(sf::RenderWindow& window, const Player& player)
     if (font_ != nullptr)
     {
         sf::Text title = makeText(*font_, "玩家", 24, sf::Color(235, 229, 207));
-        title.setPosition({58.0f, 52.0f});
+        title.setPosition({48.0f, 36.0f});
         window.draw(title);
 
         sf::Text hpText =
             makeText(*font_, "HP " + std::to_string(player.getCurrentHealth()) + "/" +
                                  std::to_string(player.getMaxHealth()),
                      18, sf::Color(222, 210, 190));
-        hpText.setPosition({58.0f, 92.0f});
+        hpText.setPosition({48.0f, 76.0f});
         window.draw(hpText);
 
         sf::Text energyText =
             makeText(*font_, "能量 " + std::to_string(player.getCurrentEnergy()) + "/" +
                                  std::to_string(player.getMaxEnergy()),
                      18, sf::Color(240, 200, 120));
-        energyText.setPosition({250.0f, 92.0f});
+        energyText.setPosition({250.0f, 76.0f});
         window.draw(energyText);
 
         sf::Text blockText =
             makeText(*font_, "格挡 " + std::to_string(player.getBlock()), 18,
                      sf::Color(140, 180, 230));
-        blockText.setPosition({58.0f, 140.0f});
+        blockText.setPosition({48.0f, 124.0f});
         window.draw(blockText);
 
-        drawStatusBadge(window, *font_, {178.0f, 153.0f}, "力", player.getStrength(),
+        drawStatusBadge(window, *font_, {135.0f, 165.0f}, "力", player.getStrength(),
                         sf::Color(170, 83, 55));
-        drawStatusBadge(window, *font_, {247.0f, 153.0f}, "弱", player.getWeak(),
+        drawStatusBadge(window, *font_, {201.0f, 165.0f}, "弱", player.getWeak(),
                         sf::Color(85, 116, 155));
-        drawStatusBadge(window, *font_, {316.0f, 153.0f}, "易", player.getVulnerable(),
+        drawStatusBadge(window, *font_, {267.0f, 165.0f}, "易", player.getVulnerable(),
                         sf::Color(157, 91, 57));
+        drawStatusBadge(window, *font_, {333.0f, 165.0f}, "脆", player.getFrail(),
+                        sf::Color(112, 101, 75));
+        drawStatusBadge(window, *font_, {69.0f, 165.0f}, "敏", player.getDexterity(),
+                        sf::Color(72, 130, 103));
     }
 
     const float hpRatio = maxHealth > 0.0f ? currentHealth / maxHealth : 0.0f;
-    drawBar(window, {58.0f, 122.0f}, {180.0f, 16.0f}, hpRatio,
+    drawBar(window, {48.0f, 106.0f}, {180.0f, 16.0f}, hpRatio,
             sf::Color(196, 70, 60), sf::Color(60, 40, 40));
 }
 
-void BattleView::drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy) const
+void BattleView::drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy,
+                                int calculatedIntentDamage) const
 {
-    sf::RectangleShape panel({380.0f, 150.0f});
-    panel.setPosition({kWindowWidth - 420.0f, 40.0f});
+    sf::RectangleShape panel({430.0f, 205.0f});
+    panel.setPosition({kWindowWidth - 450.0f, 12.0f});
     panel.setFillColor(sf::Color(48, 52, 58));
     panel.setOutlineColor(sf::Color(40, 32, 26));
     panel.setOutlineThickness(2.0f);
@@ -257,32 +337,58 @@ void BattleView::drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy) co
     if (font_ != nullptr)
     {
         sf::Text title = makeText(*font_, enemy.getName(), 24, sf::Color(235, 229, 207));
-        title.setPosition({kWindowWidth - 402.0f, 52.0f});
+        title.setPosition({kWindowWidth - 432.0f, 25.0f});
         window.draw(title);
 
         sf::Text hpText = makeText(
             *font_, "HP " + std::to_string(enemy.getCurrentHealth()) + "/" +
                         std::to_string(enemy.getMaxHealth()),
             18, sf::Color(222, 210, 190));
-        hpText.setPosition({kWindowWidth - 402.0f, 92.0f});
+        hpText.setPosition({kWindowWidth - 432.0f, 64.0f});
         window.draw(hpText);
 
-        sf::Text intentText =
-            makeText(*font_, "意图 " + std::to_string(enemy.getIntentDamage()), 18,
-                     sf::Color(230, 120, 110));
-        intentText.setPosition({kWindowWidth - 402.0f, 140.0f});
+        if (enemy.getBlock() > 0)
+        {
+            sf::Text blockText = makeText(*font_, "格挡 " + std::to_string(enemy.getBlock()),
+                                          16, sf::Color(140, 180, 230));
+            blockText.setPosition({kWindowWidth - 230.0f, 65.0f});
+            window.draw(blockText);
+        }
+
+        const EnemyIntent& intent = enemy.getIntent();
+        drawIntentBadge(window, *font_, {kWindowWidth - 408.0f, 137.0f}, intent.type);
+        std::string intentLabel = intent.name;
+        if (intent.damage > 0)
+        {
+            intentLabel += "  " + std::to_string(calculatedIntentDamage);
+            if (intent.hits > 1) intentLabel += " x " + std::to_string(intent.hits);
+        }
+        sf::Text intentText = makeText(*font_, intentLabel, 18, sf::Color(240, 216, 160));
+        intentText.setPosition({kWindowWidth - 368.0f, 112.0f});
         window.draw(intentText);
 
-        drawStatusBadge(window, *font_, {kWindowWidth - 302.0f, 153.0f}, "力",
+        sf::Text intentDetail = makeText(*font_, intent.description, 14, sf::Color(205, 201, 191));
+        intentDetail.setPosition({kWindowWidth - 368.0f, 140.0f});
+        window.draw(intentDetail);
+
+        const std::string power = enemy.getPowerDescription();
+        if (!power.empty())
+        {
+            sf::Text powerText = makeText(*font_, power, 13, sf::Color(181, 167, 213));
+            powerText.setPosition({kWindowWidth - 432.0f, 181.0f});
+            window.draw(powerText);
+        }
+
+        drawStatusBadge(window, *font_, {kWindowWidth - 190.0f, 91.0f}, "力",
                         enemy.getStrength(), sf::Color(170, 83, 55));
-        drawStatusBadge(window, *font_, {kWindowWidth - 233.0f, 153.0f}, "弱",
+        drawStatusBadge(window, *font_, {kWindowWidth - 125.0f, 91.0f}, "弱",
                         enemy.getWeak(), sf::Color(85, 116, 155));
-        drawStatusBadge(window, *font_, {kWindowWidth - 164.0f, 153.0f}, "易",
+        drawStatusBadge(window, *font_, {kWindowWidth - 60.0f, 91.0f}, "易",
                         enemy.getVulnerable(), sf::Color(157, 91, 57));
     }
 
     const float hpRatio = maxHealth > 0.0f ? currentHealth / maxHealth : 0.0f;
-    drawBar(window, {kWindowWidth - 402.0f, 122.0f}, {180.0f, 16.0f}, hpRatio,
+    drawBar(window, {kWindowWidth - 432.0f, 91.0f}, {180.0f, 16.0f}, hpRatio,
             sf::Color(196, 70, 60), sf::Color(60, 40, 40));
 }
 

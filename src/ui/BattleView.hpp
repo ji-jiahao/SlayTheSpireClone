@@ -32,7 +32,8 @@ private:
 
     std::vector<HandCardLayout> layoutHand(const std::vector<Card>& hand) const;
     void drawPlayerPanel(sf::RenderWindow& window, const Player& player) const;
-    void drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy) const;
+    void drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy,
+                        int calculatedIntentDamage) const;
     void drawHand(sf::RenderWindow& window, const std::vector<Card>& hand) const;
     void drawEndTurnButton(sf::RenderWindow& window) const;
 
