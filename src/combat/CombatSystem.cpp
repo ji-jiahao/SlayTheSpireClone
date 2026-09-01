@@ -33,6 +33,22 @@ int hitCount(const CardEffect& effect)
         return 1;
     }
 }
+
+Card makeSlimedCard()
+{
+    Card card;
+    card.id = "slimed";
+    card.name = "黏液";
+    card.type = CardType::Skill;
+    card.rarity = CardRarity::Status;
+    card.cost = 1;
+    card.description = "消耗。";
+    card.effects = {{CardEffectType::Exhaust, 1, CardTarget::Self, {}}};
+    card.upgradedCost = 1;
+    card.upgradedDescription = card.description;
+    card.upgradedEffects = card.effects;
+    return card;
+}
 }
 
 CombatSystem::CombatSystem()
@@ -58,11 +74,13 @@ void CombatSystem::startBattle(int currentHealth, std::uint32_t seed, std::vecto
                                int extraDrawCards, int maxHealth)
 {
     player = Player(maxHealth, kPlayerMaxEnergy, currentHealth);
-    enemy = Enemy(encounter.enemyName, encounter.enemyHealth);
-    enemy.setIntentDamage(encounter.intentDamage);
+    enemy = Enemy(encounter.enemyId, encounter.enemyName, encounter.enemyHealth, seed + 97u);
+    if (enemy.getArchetype() == EnemyArchetype::Generic)
+        enemy.setIntentDamage(encounter.intentDamage);
     deck = Deck(std::move(cards));
     deck.shuffle(seed);
     result = BattleResult::Active;
+    deathPowerApplied = false;
     player.gainBlock(startingBlock);
     player.applyStrength(startingStrength);
     player.gainEnergy(startingEnergy);
@@ -109,6 +127,11 @@ bool CombatSystem::playCard(int handIndex)
 
     if (enemy.isDead())
     {
+        if (!deathPowerApplied && enemy.getDeathVulnerable() > 0)
+        {
+            player.applyVulnerable(enemy.getDeathVulnerable());
+            deathPowerApplied = true;
+        }
         result = BattleResult::Victory;
     }
     else if (player.getCurrentHealth() <= 0)
@@ -127,7 +150,9 @@ void CombatSystem::endPlayerTurn()
 
     deck.discardHand();
     player.endTurn();
-    player.takeDamage(calculateEnemyDamage(enemy.getIntentDamage()));
+    enemy.startTurn();
+    const bool splitIntent = enemy.getIntent().type == EnemyIntentType::Split;
+    resolveEnemyIntent();
     enemy.endTurn();
 
     if (player.getCurrentHealth() <= 0)
@@ -136,6 +161,8 @@ void CombatSystem::endPlayerTurn()
         return;
     }
 
+    if (!splitIntent)
+        enemy.advanceIntent();
     player.startTurn();
     drawHand();
 }
@@ -148,7 +175,31 @@ const Player& CombatSystem::getPlayer() const { return player; }
 const Enemy& CombatSystem::getEnemy() const { return enemy; }
 const std::vector<Card>& CombatSystem::getHandCards() const { return deck.getHand(); }
 const Deck& CombatSystem::getDeck() const { return deck; }
+int CombatSystem::getEnemyIntentDamage() const
+{
+    return calculateEnemyDamage(enemy.getIntent().damage);
+}
 BattleResult CombatSystem::getResult() const { return result; }
+
+void CombatSystem::resolveEnemyIntent()
+{
+    const EnemyIntent intent = enemy.getIntent();
+    for (int hit = 0; hit < std::max(1, intent.hits); ++hit)
+    {
+        if (intent.damage > 0) player.takeDamage(calculateEnemyDamage(intent.damage));
+        if (player.getCurrentHealth() <= 0) break;
+    }
+    enemy.gainBlock(intent.block);
+    enemy.applyStrength(intent.strength);
+    player.applyWeak(intent.weak);
+    player.applyVulnerable(intent.vulnerable);
+    player.applyFrail(intent.frail);
+    player.applyDexterity(intent.dexterity);
+    if (intent.slimed > 0)
+        deck.addToDiscardPile(makeSlimedCard(), static_cast<std::size_t>(intent.slimed));
+    if (intent.type == EnemyIntentType::Split)
+        enemy.resolveSplit();
+}
 
 void CombatSystem::resolveEffect(const CardEffect& effect)
 {
@@ -164,7 +215,7 @@ void CombatSystem::resolveEffect(const CardEffect& effect)
         }
         break;
     case CardEffectType::Block:
-        player.gainBlock(effect.value);
+        player.gainCardBlock(effect.value);
         break;
     case CardEffectType::Draw:
         deck.drawCards(static_cast<std::size_t>(std::max(0, effect.value)));
