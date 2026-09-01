@@ -1,13 +1,12 @@
-#ifndef MAPGENERATOR_HPP
-#define MAPGENERATOR_HPP
+#pragma once
 
-#include "MapNode.hpp"
+#include "map/MapNode.hpp"
+
+#include <cstdint>
 #include <vector>
 
 class MapGenerator
 {
 public:
-    std::vector<MapNode> generateMap(int rowCount);
+    std::vector<MapNode> generateActOne(std::uint32_t seed) const;
 };
-
-#endif

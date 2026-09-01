@@ -1,93 +1,81 @@
-#include "MapGenerator.hpp"
-#include <random>
-#include <unordered_set>
+#include "map/MapGenerator.hpp"
 
-std::vector<MapNode> MapGenerator::generateMap(int rowCount)
+#include <array>
+
+namespace
 {
-    std::vector<MapNode> nodeList;
-    int globalNodeId = 0;
-    std::random_device rd;
-    std::mt19937 rng(rd());
+constexpr int kFloorCount = 17;
 
-   
-    for (int row = 0; row < rowCount; ++row)
+int nodeCountForRow(int row)
+{
+    return (row == 8 || row >= 14) ? 1 : 3;
+}
+
+MapNodeType nodeTypeFor(int row, int column, std::uint32_t seed)
+{
+    if (row == 0) return MapNodeType::Battle;
+    if (row == 8 || row == 16) return MapNodeType::Treasure;
+    if (row == 14) return MapNodeType::Rest;
+    if (row == 15) return MapNodeType::Boss;
+
+    constexpr std::array<MapNodeType, 12> pattern = {
+        MapNodeType::Battle, MapNodeType::Unknown, MapNodeType::Battle,
+        MapNodeType::Rest, MapNodeType::Shop, MapNodeType::Battle,
+        MapNodeType::Battle, MapNodeType::Elite, MapNodeType::Unknown,
+        MapNodeType::Shop, MapNodeType::Battle, MapNodeType::Rest};
+    const std::size_t index = static_cast<std::size_t>((row * 3 + column + seed) % pattern.size());
+    return pattern[index];
+}
+}
+
+std::vector<MapNode> MapGenerator::generateActOne(std::uint32_t seed) const
+{
+    std::vector<MapNode> nodes;
+    std::array<int, kFloorCount> rowStarts{};
+    int nextId = 0;
+
+    for (int row = 0; row < kFloorCount; ++row)
     {
-        int nodeAmount;
-        if (row == rowCount - 1)
+        rowStarts[static_cast<std::size_t>(row)] = nextId;
+        const int count = nodeCountForRow(row);
+        for (int column = 0; column < count; ++column)
         {
-            nodeAmount = 1;
+            nodes.push_back({nextId++, row, column, nodeTypeFor(row, column, seed), {}});
         }
-        else
-        {
-                      std::uniform_int_distribution<int> distNodeNum(2, 4);
-            nodeAmount = distNodeNum(rng);
-        }
+    }
 
-        for (int col = 0; col < nodeAmount; ++col)
-        {
-            MapNode newNode{};
-            newNode.id = globalNodeId;
-            newNode.row = row;
-            newNode.column = col;
+    for (int row = 0; row < kFloorCount - 1; ++row)
+    {
+        const int currentCount = nodeCountForRow(row);
+        const int nextCount = nodeCountForRow(row + 1);
+        const int currentStart = rowStarts[static_cast<std::size_t>(row)];
+        const int nextStart = rowStarts[static_cast<std::size_t>(row + 1)];
 
-            if (row == rowCount - 1)
+        for (int column = 0; column < currentCount; ++column)
+        {
+            MapNode& node = nodes[static_cast<std::size_t>(currentStart + column)];
+            if (nextCount == 1)
             {
-                newNode.type = MapNodeType::Boss;
+                node.nextNodeIds.push_back(nextStart);
+            }
+            else if (currentCount == 1)
+            {
+                for (int nextColumn = 0; nextColumn < nextCount; ++nextColumn)
+                {
+                    node.nextNodeIds.push_back(nextStart + nextColumn);
+                }
             }
             else
             {
-                std::uniform_int_distribution<int> distType(0, 4);
-                int typeRand = distType(rng);
-                switch (typeRand)
+                for (int nextColumn = 0; nextColumn < nextCount; ++nextColumn)
                 {
-                case 0: newNode.type = MapNodeType::Battle; break;
-                case 1: newNode.type = MapNodeType::Elite; break;
-                case 2: newNode.type = MapNodeType::Rest; break;
-                case 3: newNode.type = MapNodeType::Shop; break;
-                case 4: newNode.type = MapNodeType::Event; break;
-                }
-            }
-            nodeList.push_back(newNode);
-            globalNodeId++;
-        }
-    }
-
-    int scanPos = 0;
-    for (int row = 0; row < rowCount - 1; ++row)
-    {
-        int currentRowSize = 0;
-        while (scanPos < nodeList.size() && nodeList[scanPos].row == row)
-        {
-            currentRowSize++;
-            scanPos++;
-        }
-        int nextRowStartIndex = scanPos;
-        int nextRowSize = 0;
-        while (scanPos < nodeList.size() && nodeList[scanPos].row == row + 1)
-        {
-            nextRowSize++;
-            scanPos++;
-        }
-
-        for (int i = 0; i < currentRowSize; ++i)
-        {
-            int fromIndex = nextRowStartIndex - currentRowSize + i;
-            std::unordered_set<int> connectedIds;
-            std::uniform_int_distribution<int> connectCountDist(1, nextRowSize);
-            int linkNum = connectCountDist(rng);
-
-            for (int k = 0; k < linkNum; ++k)
-            {
-                std::uniform_int_distribution<int> colDist(0, nextRowSize - 1);
-                int targetCol = colDist(rng);
-                int targetId = nextRowStartIndex + targetCol;
-                if (!connectedIds.count(targetId))
-                {
-                    connectedIds.insert(targetId);
-                    nodeList[fromIndex].nextNodeIds.push_back(targetId);
+                    if (nextColumn >= column - 1 && nextColumn <= column + 1)
+                    {
+                        node.nextNodeIds.push_back(nextStart + nextColumn);
+                    }
                 }
             }
         }
     }
-    return nodeList;
+    return nodes;
 }
