@@ -47,6 +47,9 @@ private:
     void drawMapScene();
     void drawResultOverlay();
     void drawGameOver();
+    bool loadMapIconTextures();
+    const sf::Texture* getMapNodeTexture(MapNodeType type) const;
+    bool isMapNodeSelectable(const MapNode& node) const;
     std::vector<MapNodeButton> layoutMapNodes() const;
     sf::Text makeText(const std::string& text, unsigned int size,
                       sf::Color color) const;
@@ -69,4 +72,10 @@ private:
     std::string statusMessage;
     std::string lastError;
     std::vector<MapNode> mapNodes;
+    sf::Texture battleNodeTexture;
+    sf::Texture eliteNodeTexture;
+    sf::Texture restNodeTexture;
+    sf::Texture shopNodeTexture;
+    sf::Texture eventNodeTexture;
+    bool mapIconsLoaded = false;
 };

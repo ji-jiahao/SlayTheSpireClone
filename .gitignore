@@ -33,3 +33,6 @@
 /SFML-*.zip
 /SlayTheSpireClone/
 /ConsoleApplication1/
+
+# 本地设计源文件，运行时只需要 assets/images/map/ 下的图片。
+/src/map/map_icons.zip

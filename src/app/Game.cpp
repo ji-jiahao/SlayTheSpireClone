@@ -4,6 +4,7 @@
 
 #include <array>
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -64,6 +65,16 @@ sf::Color mapNodeColor(MapNodeType type)
     return sf::Color(160, 160, 160);
 }
 
+sf::Color mapLineColor(bool active)
+{
+    if (active)
+    {
+        return sf::Color(225, 198, 118);
+    }
+
+    return sf::Color(82, 86, 94);
+}
+
 std::optional<MapNode> findNodeById(const std::vector<MapNode>& nodes, int nodeId)
 {
     const auto it = std::find_if(nodes.begin(), nodes.end(),
@@ -108,12 +119,17 @@ Game::Game()
         std::cerr << lastError << std::endl;
     }
 
+    mapIconsLoaded = loadMapIconTextures();
+    if (!mapIconsLoaded)
+    {
+        std::cerr << lastError << std::endl;
+    }
+
     MapGenerator generator;
     mapNodes = generator.generateMap(6);
     if (!mapNodes.empty())
     {
         mapNodes.front().type = MapNodeType::Event;
-        state.currentNodeId = mapNodes.front().id;
     }
     if (mapNodes.size() > 1)
     {
@@ -218,6 +234,12 @@ void Game::handleMapMouseClick(sf::Vector2f mousePosition)
             return;
         }
 
+        if (!isMapNodeSelectable(*node))
+        {
+            statusMessage = "只能沿着当前道路向上前进，不能回退或跳到其他分支。";
+            return;
+        }
+
         state.currentNodeId = node->id;
         if (node->type == MapNodeType::Event)
         {
@@ -244,7 +266,7 @@ void Game::handleMapMouseClick(sf::Vector2f mousePosition)
             return;
         }
 
-        statusMessage = mapNodeTypeName(node->type) + "节点暂未接入，已保留为地图占位。";
+        statusMessage = mapNodeTypeName(node->type) + "节点暂未接入，已沿当前道路前进。";
         return;
     }
 }
@@ -384,11 +406,11 @@ void Game::drawMapScene()
         return;
     }
 
-    sf::Text title = makeText("地图测试入口", 42, sf::Color(235, 229, 207));
+    sf::Text title = makeText("地图", 42, sf::Color(235, 229, 207));
     title.setPosition({70.0f, 48.0f});
     window.draw(title);
 
-    sf::Text hint = makeText("点击事件节点进入大学/奶龙事件，点击战斗节点进入最新主线战斗。",
+    sf::Text hint = makeText("从最底层开始选择路线，之后只能沿连线向上前进。",
                              22, sf::Color(210, 199, 174));
     hint.setPosition({70.0f, 108.0f});
     window.draw(hint);
@@ -434,11 +456,15 @@ void Game::drawMapScene()
             }
 
             const sf::Vector2f targetCenter = targetIt->bounds.getCenter();
+            const bool activeLine = node.id == state.currentNodeId ||
+                                    state.currentNodeId == -1 ||
+                                    std::find(node.nextNodeIds.begin(), node.nextNodeIds.end(),
+                                              state.currentNodeId) != node.nextNodeIds.end();
             sf::VertexArray line(sf::PrimitiveType::Lines, 2);
             line[0].position = center;
-            line[0].color = sf::Color(92, 100, 112);
+            line[0].color = mapLineColor(activeLine);
             line[1].position = targetCenter;
-            line[1].color = sf::Color(92, 100, 112);
+            line[1].color = mapLineColor(activeLine);
             window.draw(line);
         }
     }
@@ -451,22 +477,56 @@ void Game::drawMapScene()
             continue;
         }
 
-        sf::CircleShape circle(button.bounds.size.x / 2.0f, 48);
-        circle.setPosition(button.bounds.position);
-        circle.setFillColor(mapNodeColor(node->type));
-        circle.setOutlineThickness(node->id == state.currentNodeId ? 5.0f : 3.0f);
-        circle.setOutlineColor(sf::Color(238, 221, 170));
-        window.draw(circle);
+        const bool selected = node->id == state.currentNodeId;
+        const bool selectable = isMapNodeSelectable(*node);
+        const sf::Texture* texture = getMapNodeTexture(node->type);
+        if (texture != nullptr)
+        {
+            sf::Sprite icon(*texture);
+            const sf::FloatRect localBounds = icon.getLocalBounds();
+            const float scale = std::min(button.bounds.size.x / localBounds.size.x,
+                                         button.bounds.size.y / localBounds.size.y);
+            icon.setScale({scale, scale});
+            icon.setPosition({button.bounds.position.x +
+                                  (button.bounds.size.x - localBounds.size.x * scale) / 2.0f,
+                              button.bounds.position.y +
+                                  (button.bounds.size.y - localBounds.size.y * scale) / 2.0f});
+            icon.setColor(sf::Color(255, 255, 255,
+                                    static_cast<std::uint8_t>(selectable || selected ? 255 : 95)));
+            window.draw(icon);
+        }
+        else
+        {
+            sf::CircleShape circle(button.bounds.size.x / 2.0f, 48);
+            circle.setPosition(button.bounds.position);
+            circle.setFillColor(mapNodeColor(node->type));
+            circle.setOutlineThickness(selected ? 5.0f : 3.0f);
+            circle.setOutlineColor(sf::Color(238, 221, 170));
+            window.draw(circle);
+        }
+
+        if (selectable || selected)
+        {
+            sf::CircleShape outline(button.bounds.size.x / 2.0f, 48);
+            outline.setPosition(button.bounds.position);
+            outline.setFillColor(sf::Color::Transparent);
+            outline.setOutlineThickness(selected ? 5.0f : 3.0f);
+            outline.setOutlineColor(selected ? sf::Color(246, 216, 114)
+                                             : sf::Color(224, 221, 205));
+            window.draw(outline);
+        }
 
         sf::Text label = makeText(mapNodeTypeName(node->type), 16,
-                                  sf::Color(26, 24, 22));
+                                  selectable || selected ? sf::Color(246, 242, 226)
+                                                         : sf::Color(128, 128, 128));
         const sf::FloatRect bounds = label.getLocalBounds();
         label.setPosition({button.bounds.position.x +
                                (button.bounds.size.x - bounds.size.x) / 2.0f -
                                bounds.position.x,
                            button.bounds.position.y +
-                               (button.bounds.size.y - bounds.size.y) / 2.0f -
-                               bounds.position.y});
+                               button.bounds.size.y + 8.0f});
+        label.setOutlineThickness(2.0f);
+        label.setOutlineColor(sf::Color(18, 18, 18, 210));
         window.draw(label);
     }
 }
@@ -537,6 +597,76 @@ void Game::drawGameOver()
     window.draw(message);
 }
 
+bool Game::loadMapIconTextures()
+{
+    struct TextureLoadItem
+    {
+        sf::Texture* texture;
+        const char* filePath;
+    };
+
+    const std::array<TextureLoadItem, 5> items = {{
+        {&battleNodeTexture, "assets/images/map/node_normal.png"},
+        {&eliteNodeTexture, "assets/images/map/node_elite.png"},
+        {&restNodeTexture, "assets/images/map/node_rest.png"},
+        {&shopNodeTexture, "assets/images/map/node_shop.png"},
+        {&eventNodeTexture, "assets/images/map/node_event.png"},
+    }};
+
+    for (const TextureLoadItem& item : items)
+    {
+        if (!item.texture->loadFromFile(item.filePath))
+        {
+            lastError = std::string("无法加载地图图标: ") + item.filePath;
+            return false;
+        }
+    }
+
+    return true;
+}
+
+const sf::Texture* Game::getMapNodeTexture(MapNodeType type) const
+{
+    if (!mapIconsLoaded)
+    {
+        return nullptr;
+    }
+
+    switch (type)
+    {
+    case MapNodeType::Battle:
+        return &battleNodeTexture;
+    case MapNodeType::Elite:
+    case MapNodeType::Boss:
+        return &eliteNodeTexture;
+    case MapNodeType::Rest:
+        return &restNodeTexture;
+    case MapNodeType::Shop:
+        return &shopNodeTexture;
+    case MapNodeType::Event:
+        return &eventNodeTexture;
+    }
+
+    return nullptr;
+}
+
+bool Game::isMapNodeSelectable(const MapNode& node) const
+{
+    if (state.currentNodeId == -1)
+    {
+        return node.row == 0;
+    }
+
+    const std::optional<MapNode> currentNode = findNodeById(mapNodes, state.currentNodeId);
+    if (!currentNode.has_value())
+    {
+        return node.row == 0;
+    }
+
+    return std::find(currentNode->nextNodeIds.begin(), currentNode->nextNodeIds.end(),
+                     node.id) != currentNode->nextNodeIds.end();
+}
+
 std::vector<Game::MapNodeButton> Game::layoutMapNodes() const
 {
     std::vector<MapNodeButton> buttons;
@@ -551,9 +681,9 @@ std::vector<Game::MapNodeButton> Game::layoutMapNodes() const
         maxRow = std::max(maxRow, node.row);
     }
 
-    constexpr float nodeSize = 74.0f;
-    constexpr float top = 270.0f;
-    constexpr float bottom = 650.0f;
+    constexpr float nodeSize = 86.0f;
+    constexpr float top = 260.0f;
+    constexpr float bottom = 640.0f;
     const float rowGap = maxRow == 0 ? 0.0f : (bottom - top) / static_cast<float>(maxRow);
 
     for (const MapNode& node : mapNodes)
@@ -570,7 +700,7 @@ std::vector<Game::MapNodeButton> Game::layoutMapNodes() const
         const float totalWidth = static_cast<float>(rowNodeCount - 1) * 180.0f;
         const float x = static_cast<float>(kWindowWidth) / 2.0f - totalWidth / 2.0f +
                         static_cast<float>(node.column) * 180.0f - nodeSize / 2.0f;
-        const float y = top + static_cast<float>(node.row) * rowGap - nodeSize / 2.0f;
+        const float y = bottom - static_cast<float>(node.row) * rowGap - nodeSize / 2.0f;
         buttons.push_back({node.id, sf::FloatRect({x, y}, {nodeSize, nodeSize})});
     }
 
