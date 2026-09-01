@@ -14,6 +14,13 @@ enum class BattleResult
     Defeat
 };
 
+struct EncounterDefinition
+{
+    std::string enemyName = "邪教徒";
+    int enemyHealth = 40;
+    int intentDamage = 6;
+};
+
 class CombatSystem
 {
 public:
@@ -21,6 +28,10 @@ public:
 
     void startBattle(int currentHealth = 80, std::uint32_t seed = 0);
     void startBattle(int currentHealth, std::uint32_t seed, std::vector<Card> cards);
+    void startBattle(int currentHealth, std::uint32_t seed, std::vector<Card> cards,
+                     const EncounterDefinition& encounter, int startingBlock,
+                     int startingStrength, int startingEnergy = 0,
+                     int extraDrawCards = 0, int maxHealth = 80);
     bool playCard(int handIndex);
     void endPlayerTurn();
     void update();
@@ -35,7 +46,7 @@ private:
     void resolveEffect(const CardEffect& effect);
     int calculatePlayerDamage(int baseDamage) const;
     int calculateEnemyDamage(int baseDamage) const;
-    void drawHand();
+    void drawHand(std::size_t count = 5);
 
     Player player;
     Enemy enemy;

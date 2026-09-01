@@ -49,13 +49,24 @@ void CombatSystem::startBattle(int currentHealth, std::uint32_t seed)
 
 void CombatSystem::startBattle(int currentHealth, std::uint32_t seed, std::vector<Card> cards)
 {
-    player = Player(kPlayerMaxHealth, kPlayerMaxEnergy, currentHealth);
-    enemy = Enemy("邪教徒", kCultistMaxHealth);
-    enemy.setIntentDamage(kCultistIntentDamage);
+    startBattle(currentHealth, seed, std::move(cards), EncounterDefinition{}, 0, 0);
+}
+
+void CombatSystem::startBattle(int currentHealth, std::uint32_t seed, std::vector<Card> cards,
+                               const EncounterDefinition& encounter, int startingBlock,
+                               int startingStrength, int startingEnergy,
+                               int extraDrawCards, int maxHealth)
+{
+    player = Player(maxHealth, kPlayerMaxEnergy, currentHealth);
+    enemy = Enemy(encounter.enemyName, encounter.enemyHealth);
+    enemy.setIntentDamage(encounter.intentDamage);
     deck = Deck(std::move(cards));
     deck.shuffle(seed);
     result = BattleResult::Active;
-    drawHand();
+    player.gainBlock(startingBlock);
+    player.applyStrength(startingStrength);
+    player.gainEnergy(startingEnergy);
+    drawHand(kHandSize + static_cast<std::size_t>(std::max(0, extraDrawCards)));
 }
 
 bool CombatSystem::playCard(int handIndex)
@@ -222,7 +233,7 @@ int CombatSystem::calculateEnemyDamage(int baseDamage) const
     return std::max(0, static_cast<int>(std::floor(damage)));
 }
 
-void CombatSystem::drawHand()
+void CombatSystem::drawHand(std::size_t count)
 {
-    deck.drawCards(kHandSize);
+    deck.drawCards(count);
 }
