@@ -167,3 +167,96 @@
 - 已执行：启动 `out/build/windows-x64/Debug/SlayTheSpire.exe` 3 秒，进程保持运行后结束测试进程。
 - 已检查：`out/build/windows-x64/Debug/assets/images/menu/start_screen.png` 已存在。
 - 推送前同步：`git fetch origin` 因无法连接 `github.com:443` 失败，后续改为先生成本地提交再尝试推送。
+
+## 编码前检查 - 篝火休息房与商店
+
+时间：2026-09-02 00:00:00 +08:00
+
+□ 已查阅上下文摘要文件：`.codex/context-summary-rest-shop.md`
+□ 将使用以下可复用组件：
+
+- `Game`: `src/app/Game.cpp` - 负责场景切换、地图点击和返回流程
+- `GameState`: `src/core/GameState.hpp` - 负责生命、金币、牌组和访问记录
+- `CardDatabase`: `src/card/CardDatabase.cpp` - 负责商店卡牌来源
+- `RelicDatabase` / `RelicSystem`: `src/relic/RelicDatabase.cpp`、`src/relic/RelicSystem.cpp` - 负责遗物来源与拾取结算
+- `CardView` / `UiHelpers`: `src/ui/CardView.cpp`、`src/ui/UiHelpers.cpp` - 负责卡牌和按钮绘制
+
+□ 将遵循命名约定：类型大驼峰，函数与变量小驼峰，常量 `k` 前缀。
+□ 将遵循代码风格：C++17、`.hpp/.cpp` 分离、SFML 3.0.1、界面与规则分离。
+□ 确认不重复造轮子，证明：已检查 `src/ui/`、`src/card/`、`src/relic/`、`src/map/`、`origin/feature/ui`，房间功能直接复用现有卡牌与遗物数据表，不另起一套商品系统。
+
+## 编码后声明 - 篝火休息房与商店
+
+时间：2026-09-02 00:20:00 +08:00
+
+### 1. 复用了以下既有组件
+
+- `GameState`: 用于生命、金币、牌组增删和遗物持有状态。
+- `CardDatabase`: 用于商店 6 张可购买卡牌的来源。
+- `RelicDatabase` / `RelicSystem`: 用于商店遗物来源与购买后的拾取效果。
+- `CardView`: 用于商店卡牌和删牌列表展示。
+- `UiHelpers`: 用于按钮、文本和点击区域判断。
+
+### 2. 遵循了以下项目约定
+
+- 命名约定：新增 `RestSystem`、`ShopSystem`、`RestView`、`ShopView` 使用大驼峰；函数和字段使用小驼峰。
+- 代码风格：新增 `.hpp/.cpp` 已加入 `CMakeLists.txt`，规则层放入 `src/room/`，界面层放入 `src/ui/`。
+- 文件组织：商人 GIF 原件放入 `assets/images/shop/merchant.gif`，运行帧放入 `assets/images/shop/merchant_frames/`。
+
+### 3. 对比了以下相似实现
+
+- `src/app/Game.cpp`: 新增 `Rest` 与 `Shop` 场景，沿用现有场景切换和返回地图方式。
+- `src/ui/BattleView.cpp`: 商店卡牌区域复用固定逻辑分辨率和 `CardView` 绘制模式。
+- `src/ui/EventView.cpp`: 商人气泡沿用按时间更新、绘制层透明渐变的思路。
+
+### 4. 未重复造轮子的证明
+
+- 已检查现有 `src/ui/` 和远端 `origin/feature/ui`，没有完整商店/篝火系统；只复用可用的 UI helper 和卡牌视图。
+- 商店商品直接从现有卡牌库、遗物库生成，没有新增第二套卡牌或遗物定义。
+
+## 验证记录 - 篝火休息房与商店
+
+时间：2026-09-02 00:25:00 +08:00
+
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --preset windows-x64`
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --build --preset debug`
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe --test-dir out/build/windows-x64 -C Debug --output-on-failure`
+- 测试结果：`CardTests`、`CombatTests`、`RelicTests`、`RoomTests` 全部通过。
+- 已执行：启动 `out/build/windows-x64/Debug/SlayTheSpire.exe` 3 秒，进程保持运行后结束测试进程。
+- 已检查：运行目录包含 `assets/images/shop/merchant.gif` 和 17 张 `merchant_frames/*.png`。
+- 已确认：商人对话框随机显示“不来点什么？”或“超实惠！”，逐渐显示、停留 3 秒、逐渐消失并循环。
+
+## 编码前检查 - 地图规则更改
+
+时间：2026-09-02 08:49:35 +08:00
+
+□ 已查阅上下文摘要文件：`.codex/context-summary-map-rules.md`
+□ 将使用以下可复用组件：
+
+- `MapGenerator`: `src/map/MapGenerator.cpp` - 统一生成地图节点、房间类型和路线。
+- `MapNode`: `src/map/MapNode.hpp` - 复用 `row`、`type`、`nextNodeIds` 表达地图结构。
+- `Game::isMapNodeSelectable`: `src/app/Game.cpp` - 保持只能沿连线向上前进的既有规则。
+- `CTest`: `CMakeLists.txt` 与 `tests/*.cpp` - 复用现有独立测试程序模式。
+
+□ 将遵循命名约定：类型大驼峰，函数与变量小驼峰，常量 `k` 前缀。
+□ 将遵循代码风格：C++17、`.hpp/.cpp` 分离、标准库随机生成、中文测试说明。
+□ 确认不重复造轮子，证明：已检查 `src/map/`、`src/app/Game.cpp`、`tests/`，地图规则应集中在已有 `MapGenerator`，不新增第二套地图系统。
+□ 工具限制记录：当前会话没有 `sequential-thinking`、`shrimp-task-manager`、`desktop-commander`、`context7` 和 `github.search_code` 可调用入口，因此使用本地命令完成代码检索、上下文摘要和验证记录。
+
+## 反馈修正 - 初始金币为 0
+
+时间：2026-09-02 08:49:35 +08:00
+
+- 已将 `GameState` 的默认金币和 `reset()` 初始金币统一改为 0。
+- 已同步更新 `docs/制作计划.md` 中的示例字段，避免文档仍显示旧默认值。
+- 已在 `tests/room_tests.cpp` 中补充断言，确认新建 `GameState` 的初始金币为 0。
+
+## 反馈修正 - 地图文案、商店约束与音频背景
+
+时间：2026-09-02 09:00:00 +08:00
+
+- 已移除地图节点下方的类型说明文字，地图只保留图标和连线。
+- 已将事件页的按钮布局和命中检测改为使用真实窗口尺寸，修正全屏错位问题。
+- 已为篝火场景接入外部背景图 `assets/images/rest/campfire_background.jpg`。
+- 已将启动界面、地图、篝火、普通战斗、商人和 Boss 关卡接入对应背景音乐。
+- 已在地图生成测试中补充“相邻两个房间不允许同时为商店”的约束。

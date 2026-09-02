@@ -3,6 +3,7 @@
 #include "card/Card.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -10,7 +11,7 @@ struct GameState
 {
     int currentHealth = 80;
     int maxHealth = 80;
-    int gold = 99;
+    int gold = 0;
     int currentNodeId = -1;
     unsigned int seed = 20260901;
     std::vector<CardInstance> deck;
@@ -27,7 +28,7 @@ struct GameState
     {
         currentHealth = 80;
         maxHealth = 80;
-        gold = 99;
+        gold = 0;
         currentNodeId = -1;
         deck.clear();
         for (int index = 0; index < 5; ++index)
@@ -125,6 +126,17 @@ struct GameState
         }
 
         deck.erase(found);
+        return true;
+    }
+
+    bool removeCardAt(std::size_t index)
+    {
+        if (index >= deck.size())
+        {
+            return false;
+        }
+
+        deck.erase(deck.begin() + static_cast<std::ptrdiff_t>(index));
         return true;
     }
 

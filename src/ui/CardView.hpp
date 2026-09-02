@@ -14,7 +14,7 @@ public:
     void setFont(const sf::Font& font);
     void setPosition(sf::Vector2f position);
     sf::FloatRect getBounds() const;
-    void draw(sf::RenderWindow& window, const Card& card) const;
+    void draw(sf::RenderTarget& target, const Card& card) const;
 
     // 卡牌固定尺寸，供战斗界面排版复用。
     static sf::Vector2f getCardSize();

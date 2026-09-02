@@ -69,16 +69,33 @@ add_library(map_system STATIC
 
 target_include_directories(map_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+add_library(room_system STATIC
+    src/room/RestSystem.cpp
+    src/room/ShopSystem.cpp
+)
+
+target_include_directories(room_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(room_system PUBLIC card_system relic_system)
+
 add_library(ui STATIC
     src/ui/CardView.cpp
     src/ui/BattleView.cpp
     src/ui/EventView.cpp
     src/ui/MainMenuView.cpp
+    src/ui/RestView.cpp
+    src/ui/ShopView.cpp
     src/ui/UiHelpers.cpp
 )
 
 target_include_directories(ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ui PUBLIC card_system combat_system event_system SFML::Graphics SFML::Audio)
+target_link_libraries(ui PUBLIC
+    card_system
+    combat_system
+    event_system
+    room_system
+    SFML::Graphics
+    SFML::Audio
+)
 
 add_executable(SlayTheSpire
     src/main.cpp
@@ -88,6 +105,7 @@ add_executable(SlayTheSpire
 target_link_libraries(SlayTheSpire PRIVATE
     combat_system
     relic_system
+    room_system
     ui
     event_system
     map_system
@@ -116,6 +134,14 @@ if(BUILD_TESTING)
     add_executable(RelicTests tests/relic_tests.cpp)
     target_link_libraries(RelicTests PRIVATE relic_system)
     add_test(NAME RelicTests COMMAND RelicTests)
+
+    add_executable(RoomTests tests/room_tests.cpp)
+    target_link_libraries(RoomTests PRIVATE room_system relic_system)
+    add_test(NAME RoomTests COMMAND RoomTests)
+
+    add_executable(MapTests tests/map_tests.cpp)
+    target_link_libraries(MapTests PRIVATE map_system)
+    add_test(NAME MapTests COMMAND MapTests)
 endif()
 
 if(WIN32)

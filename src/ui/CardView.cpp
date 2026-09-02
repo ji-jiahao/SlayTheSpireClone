@@ -95,14 +95,14 @@ sf::Color CardView::colorForType(CardType type) const
     return sf::Color(150, 150, 150);
 }
 
-void CardView::draw(sf::RenderWindow& window, const Card& card) const
+void CardView::draw(sf::RenderTarget& target, const Card& card) const
 {
     sf::RectangleShape body({kCardWidth, kCardHeight});
     body.setPosition(position_);
     body.setFillColor(colorForType(card.type));
     body.setOutlineColor(sf::Color(40, 32, 26));
     body.setOutlineThickness(kOutlineThickness);
-    window.draw(body);
+    target.draw(body);
 
     if (font_ == nullptr)
     {
@@ -117,7 +117,7 @@ void CardView::draw(sf::RenderWindow& window, const Card& card) const
         costCircle.setOrigin({radius, radius});
         costCircle.setPosition({position_.x + radius + 6.0f, position_.y + radius + 6.0f});
         costCircle.setFillColor(sf::Color(246, 240, 224));
-        window.draw(costCircle);
+        target.draw(costCircle);
 
         sf::Text costText = makeText(*font_, std::to_string(card.cost), 22,
                                      sf::Color(40, 32, 26));
@@ -125,7 +125,7 @@ void CardView::draw(sf::RenderWindow& window, const Card& card) const
         costText.setPosition(
             {position_.x + radius + 6.0f - costBounds.size.x / 2.0f - costBounds.position.x,
              position_.y + radius + 6.0f - costBounds.size.y / 2.0f - costBounds.position.y - 2.0f});
-        window.draw(costText);
+        target.draw(costText);
     }
 
     // 卡名：顶部居中。
@@ -134,13 +134,13 @@ void CardView::draw(sf::RenderWindow& window, const Card& card) const
     nameText.setPosition({position_.x + (kCardWidth - nameBounds.size.x) / 2.0f -
                               nameBounds.position.x,
                           position_.y + 10.0f});
-    window.draw(nameText);
+    target.draw(nameText);
 
     // 描述面板。
     sf::RectangleShape panel({kCardWidth - 24.0f, kCardHeight - 96.0f});
     panel.setPosition({position_.x + 12.0f, position_.y + 48.0f});
     panel.setFillColor(sf::Color(246, 240, 224));
-    window.draw(panel);
+    target.draw(panel);
 
     const std::vector<std::string> lines =
         wrapText(*font_, card.description, 16, kCardWidth - 48.0f);
@@ -149,7 +149,7 @@ void CardView::draw(sf::RenderWindow& window, const Card& card) const
     {
         sf::Text descText = makeText(*font_, line, 16, sf::Color(40, 34, 28));
         descText.setPosition({position_.x + 24.0f, lineY});
-        window.draw(descText);
+        target.draw(descText);
         lineY += 22.0f;
     }
 
@@ -159,7 +159,7 @@ void CardView::draw(sf::RenderWindow& window, const Card& card) const
         sf::Text damageText = makeText(*font_, "DMG " + std::to_string(card.damage), 18,
                                        sf::Color(250, 246, 236));
         damageText.setPosition({position_.x + 14.0f, position_.y + kCardHeight - 34.0f});
-        window.draw(damageText);
+        target.draw(damageText);
     }
 
     if (card.block > 0)
@@ -169,6 +169,6 @@ void CardView::draw(sf::RenderWindow& window, const Card& card) const
         const sf::FloatRect blockBounds = blockText.getLocalBounds();
         blockText.setPosition({position_.x + kCardWidth - 14.0f - blockBounds.size.x,
                                position_.y + kCardHeight - 34.0f});
-        window.draw(blockText);
+        target.draw(blockText);
     }
 }

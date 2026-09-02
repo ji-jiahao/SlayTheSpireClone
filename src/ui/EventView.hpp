@@ -18,10 +18,11 @@ public:
     bool prepareEvent(const EventDefinition& eventDefinition);
     void enterCurrentState(const EventSystem& eventSystem);
     void update(float deltaSeconds);
-    void handleMouseMove(sf::Vector2f mousePosition, const EventSystem& eventSystem);
+    void handleMouseMove(sf::Vector2f mousePosition, sf::Vector2u windowSize,
+                         const EventSystem& eventSystem);
     bool handleAnyInput(EventSystem& eventSystem, GameState& gameState);
-    bool handleMouseClick(sf::Vector2f mousePosition, EventSystem& eventSystem,
-                          GameState& gameState);
+    bool handleMouseClick(sf::Vector2f mousePosition, sf::Vector2u windowSize,
+                          EventSystem& eventSystem, GameState& gameState);
     bool shouldReturnToMap() const;
     void clearReturnToMapRequest();
     void draw(sf::RenderWindow& window, const EventSystem& eventSystem,

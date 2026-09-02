@@ -213,12 +213,11 @@ void EventView::update(float deltaSeconds)
     }
 }
 
-void EventView::handleMouseMove(sf::Vector2f mousePosition,
+void EventView::handleMouseMove(sf::Vector2f mousePosition, sf::Vector2u windowSize,
                                 const EventSystem& eventSystem)
 {
     hoveredOptionIndex_ = -1;
-    const sf::Vector2u assumedWindowSize(1280, 720);
-    for (const OptionButton& button : layoutButtons(eventSystem, assumedWindowSize))
+    for (const OptionButton& button : layoutButtons(eventSystem, windowSize))
     {
         if (button.bounds.contains(mousePosition))
         {
@@ -253,11 +252,10 @@ bool EventView::handleAnyInput(EventSystem& eventSystem, GameState& gameState)
     return true;
 }
 
-bool EventView::handleMouseClick(sf::Vector2f mousePosition, EventSystem& eventSystem,
-                                 GameState& gameState)
+bool EventView::handleMouseClick(sf::Vector2f mousePosition, sf::Vector2u windowSize,
+                                 EventSystem& eventSystem, GameState& gameState)
 {
-    const sf::Vector2u assumedWindowSize(1280, 720);
-    const std::vector<OptionButton> buttons = layoutButtons(eventSystem, assumedWindowSize);
+    const std::vector<OptionButton> buttons = layoutButtons(eventSystem, windowSize);
     if (buttons.empty() && handleAnyInput(eventSystem, gameState))
     {
         return true;
@@ -401,31 +399,32 @@ void EventView::draw(sf::RenderWindow& window, const EventSystem& eventSystem,
     }
     else if (!isChoiceBannerState(state))
     {
-    const auto textureIt = textures_.find(state.imagePath);
-    if (textureIt != textures_.end())
-    {
-        sf::Sprite sprite(textureIt->second);
-        const sf::FloatRect localBounds = sprite.getLocalBounds();
-        sprite.setOrigin({localBounds.position.x + localBounds.size.x / 2.0f,
-                          localBounds.position.y + localBounds.size.y / 2.0f});
+        const auto textureIt = textures_.find(state.imagePath);
+        if (textureIt != textures_.end())
+        {
+            sf::Sprite sprite(textureIt->second);
+            const sf::FloatRect localBounds = sprite.getLocalBounds();
+            sprite.setOrigin({localBounds.position.x + localBounds.size.x / 2.0f,
+                              localBounds.position.y + localBounds.size.y / 2.0f});
 
-        const float maxImageWidth = width * 0.30f;
-        const float maxImageHeight = height * 0.78f;
-        const float scale = std::min(maxImageWidth / localBounds.size.x,
-                                     maxImageHeight / localBounds.size.y);
-        sprite.setScale({scale, scale});
-        sprite.setPosition({width * 0.27f, height * 0.55f});
-        window.draw(sprite);
-    }
+            const float maxImageWidth = width * 0.30f;
+            const float maxImageHeight = height * 0.78f;
+            const float scale = std::min(maxImageWidth / localBounds.size.x,
+                                         maxImageHeight / localBounds.size.y);
+            sprite.setScale({scale, scale});
+            sprite.setPosition({width * 0.27f, height * 0.55f});
+            window.draw(sprite);
+        }
 
-    const sf::FloatRect bubbleRect({width * 0.52f, height * 0.14f},
-                                   {width * 0.39f, height * 0.22f});
-    drawRoundedBox(window, bubbleRect, 22.0f, sf::Color(245, 242, 232),
-                   sf::Color(32, 28, 24), 4.0f);
+        const sf::FloatRect bubbleRect({width * 0.52f, height * 0.14f},
+                                       {width * 0.39f, height * 0.22f});
+        drawRoundedBox(window, bubbleRect, 22.0f, sf::Color(245, 242, 232),
+                       sf::Color(32, 28, 24), 4.0f);
 
-    sf::Text dialogue = makeText(font_, state.text, 32, sf::Color(20, 18, 16));
-    dialogue.setPosition({bubbleRect.position.x + 34.0f, bubbleRect.position.y + 58.0f});
-    window.draw(dialogue);
+        sf::Text dialogue = makeText(font_, state.text, 32, sf::Color(20, 18, 16));
+        dialogue.setPosition({bubbleRect.position.x + 34.0f,
+                              bubbleRect.position.y + 58.0f});
+        window.draw(dialogue);
     }
 
     const std::vector<OptionButton> buttons = layoutButtons(eventSystem, size);

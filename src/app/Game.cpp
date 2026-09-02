@@ -17,6 +17,14 @@ constexpr unsigned int kWindowWidth = 1280;
 constexpr unsigned int kWindowHeight = 720;
 constexpr const char* kEventDataPath = "assets/data/events.json";
 constexpr const char* kMenuBackgroundPath = "assets/images/menu/start_screen.png";
+constexpr const char* kRestBackgroundPath = "assets/images/rest/campfire_background.jpg";
+constexpr const char* kMenuMusicPath = "assets/sounds/slay_the_spire.mp3";
+constexpr const char* kMapMusicPath = "assets/sounds/exordium.mp3";
+constexpr const char* kRestMusicPath = "assets/sounds/after_image.mp3";
+constexpr const char* kBattleMusicPath = "assets/sounds/battle_trance.mp3";
+constexpr const char* kMerchantMusicPath = "assets/sounds/meet_the_merchant.mp3";
+constexpr const char* kBossMusicPath = "assets/sounds/battle_with_the_champ.mp3";
+constexpr const char* kMerchantFramesPath = "assets/images/shop/merchant_frames";
 constexpr const char* kUniversityEventId = "university_choice";
 constexpr const char* kNailongEventId = "sacred_nailong";
 
@@ -122,6 +130,8 @@ Game::Game()
     {
         battleView.setFont(font);
         mainMenuView.setFont(font);
+        restView.setFont(font);
+        shopView.setFont(font);
     }
 
     if (!eventView.loadFont("assets/fonts/simhei.ttf"))
@@ -148,6 +158,26 @@ Game::Game()
 
     mapIconsLoaded = loadMapIconTextures();
     if (!mapIconsLoaded)
+    {
+        std::cerr << lastError << std::endl;
+    }
+
+    if (!loadShopResources())
+    {
+        std::cerr << lastError << std::endl;
+    }
+
+    if (!loadRestResources())
+    {
+        std::cerr << lastError << std::endl;
+    }
+
+    if (restBackgroundLoaded)
+    {
+        restView.setBackground(&restBackgroundTexture);
+    }
+
+    if (!playMusic(kMenuMusicPath, true))
     {
         std::cerr << lastError << std::endl;
     }
@@ -214,10 +244,19 @@ void Game::handleWindowEvent(const sf::Event& event)
         {
             mainMenuView.handleMouseMove(window.mapPixelToCoords(mouseMoved->position));
         }
+        else if (scene == SceneType::Rest)
+        {
+            restView.handleMouseMove(window.mapPixelToCoords(mouseMoved->position));
+        }
+        else if (scene == SceneType::Shop)
+        {
+            shopView.handleMouseMove(window.mapPixelToCoords(mouseMoved->position),
+                                     shopSystem, state, removingCardInShop);
+        }
         else if (scene == SceneType::Event)
         {
             eventView.handleMouseMove(window.mapPixelToCoords(mouseMoved->position),
-                                      eventSystem);
+                                      window.getSize(), eventSystem);
         }
         return;
     }
@@ -234,13 +273,23 @@ void Game::handleWindowEvent(const sf::Event& event)
         {
             handleMenuAction(mainMenuView.handleMouseClick(mousePosition));
         }
+        else if (scene == SceneType::Rest)
+        {
+            handleRestAction(restView.handleMouseClick(mousePosition));
+        }
+        else if (scene == SceneType::Shop)
+        {
+            handleShopAction(shopView.handleMouseClick(mousePosition, shopSystem,
+                                                       state, removingCardInShop));
+        }
         else if (scene == SceneType::Map)
         {
             handleMapMouseClick(mousePosition);
         }
         else if (scene == SceneType::Event)
         {
-            eventView.handleMouseClick(mousePosition, eventSystem, state);
+            eventView.handleMouseClick(mousePosition, window.getSize(), eventSystem,
+                                       state);
         }
         else if (scene == SceneType::Battle &&
                  combat.getResult() == BattleResult::Active)
@@ -297,6 +346,18 @@ void Game::handleMapMouseClick(sf::Vector2f mousePosition)
             return;
         }
 
+        if (node->type == MapNodeType::Rest)
+        {
+            startRestRoom();
+            return;
+        }
+
+        if (node->type == MapNodeType::Shop)
+        {
+            startShopRoom();
+            return;
+        }
+
         statusMessage = mapNodeTypeName(node->type) + "节点暂未接入，已沿当前道路前进。";
         return;
     }
@@ -326,6 +387,12 @@ void Game::update(float deltaSeconds)
     {
         combat.update();
         handleBattleResult();
+        return;
+    }
+
+    if (scene == SceneType::Shop)
+    {
+        shopView.update(deltaSeconds);
     }
 }
 
@@ -347,6 +414,12 @@ void Game::render()
     case SceneType::Battle:
         battleView.draw(window, combat);
         drawResultOverlay();
+        break;
+    case SceneType::Rest:
+        drawRestScene();
+        break;
+    case SceneType::Shop:
+        drawShopScene();
         break;
     case SceneType::GameOver:
         drawGameOver();
@@ -372,6 +445,90 @@ void Game::handleMenuAction(MainMenuView::Action action)
     }
 }
 
+void Game::handleRestAction(RestView::Action action)
+{
+    switch (action)
+    {
+    case RestView::Action::Rest:
+        if (restedInCurrentRoom)
+        {
+            statusMessage = "已经休息过了。";
+            return;
+        }
+
+        statusMessage = "休息后回复 " + std::to_string(restSystem.rest(state)) + " 点生命。";
+        restedInCurrentRoom = true;
+        break;
+    case RestView::Action::Leave:
+        showMap();
+        break;
+    case RestView::Action::None:
+        break;
+    }
+}
+
+void Game::handleShopAction(const ShopAction& action)
+{
+    switch (action.type)
+    {
+    case ShopActionType::BuyCard:
+        if (shopSystem.buyCard(action.index, state))
+        {
+            statusMessage = "已购买卡牌。";
+        }
+        else
+        {
+            statusMessage = shopSystem.getLastError();
+        }
+        break;
+    case ShopActionType::BuyRelic:
+        if (shopSystem.buyRelic(action.index, state, relicSystem))
+        {
+            statusMessage = "已购买遗物。";
+        }
+        else
+        {
+            statusMessage = shopSystem.getLastError();
+        }
+        break;
+    case ShopActionType::OpenRemove:
+        if (state.deck.empty())
+        {
+            statusMessage = "牌组为空，无法删除卡牌。";
+        }
+        else if (state.gold < shopSystem.getRemoveCardPrice())
+        {
+            statusMessage = "金币不足，无法删除卡牌。";
+        }
+        else
+        {
+            removingCardInShop = true;
+            statusMessage = "选择一张牌删除。";
+        }
+        break;
+    case ShopActionType::RemoveCard:
+        if (shopSystem.removeCard(state, action.index))
+        {
+            removingCardInShop = false;
+            statusMessage = "已删除卡牌。";
+        }
+        else
+        {
+            statusMessage = shopSystem.getLastError();
+        }
+        break;
+    case ShopActionType::CancelRemove:
+        removingCardInShop = false;
+        statusMessage = "已取消删牌。";
+        break;
+    case ShopActionType::Leave:
+        showMap();
+        break;
+    case ShopActionType::None:
+        break;
+    }
+}
+
 void Game::startNewRun()
 {
     state.reset();
@@ -379,22 +536,17 @@ void Game::startNewRun()
     eventSystem.setDatabase(eventDatabase);
     handledResult = BattleResult::Active;
     relicHealing = 0;
+    restedInCurrentRoom = false;
+    removingCardInShop = false;
     statusMessage.clear();
     lastError.clear();
 
     MapGenerator generator;
     mapNodes = generator.generateMap(6);
-    if (!mapNodes.empty())
-    {
-        mapNodes.front().type = MapNodeType::Event;
-    }
-    if (mapNodes.size() > 1)
-    {
-        mapNodes[1].type = MapNodeType::Battle;
-    }
 
     scene = SceneType::Map;
     state.currentNodeId = -1;
+    playMusic(kMapMusicPath, true);
     window.setTitle("东南苦行塔 - 地图");
 }
 
@@ -409,6 +561,11 @@ void Game::startBattle()
                        EncounterDefinition{}, modifiers.block, modifiers.strength,
                        modifiers.energy, modifiers.drawCards, state.maxHealth);
     scene = SceneType::Battle;
+    const std::optional<MapNode> currentNode = findNodeById(mapNodes, state.currentNodeId);
+    playMusic(currentNode.has_value() && currentNode->type == MapNodeType::Boss
+                  ? kBossMusicPath
+                  : kBattleMusicPath,
+              true);
     window.setTitle("Slay the Spire Clone - 战斗");
 }
 
@@ -434,20 +591,45 @@ bool Game::startEvent(const std::string& eventId)
 
     eventView.enterCurrentState(eventSystem);
     scene = SceneType::Event;
+    stopMusic();
     window.setTitle("Slay the Spire Clone - 事件");
     return true;
+}
+
+void Game::startRestRoom()
+{
+    restedInCurrentRoom = false;
+    removingCardInShop = false;
+    statusMessage.clear();
+    scene = SceneType::Rest;
+    playMusic(kRestMusicPath, true);
+    window.setTitle("Slay the Spire Clone - 篝火");
+}
+
+void Game::startShopRoom()
+{
+    restedInCurrentRoom = false;
+    removingCardInShop = false;
+    statusMessage.clear();
+    shopSystem.open(state.seed, state.currentNodeId);
+    shopView.resetDialogue(state.seed ^ static_cast<unsigned int>(state.currentNodeId + 4096));
+    scene = SceneType::Shop;
+    playMusic(kMerchantMusicPath, true);
+    window.setTitle("Slay the Spire Clone - 商店");
 }
 
 void Game::showMap()
 {
     scene = SceneType::Map;
     statusMessage = "已返回地图。";
+    playMusic(kMapMusicPath, true);
     window.setTitle("Slay the Spire Clone - 地图");
 }
 
 void Game::showGameOver()
 {
     scene = SceneType::GameOver;
+    stopMusic();
     window.setTitle("Slay the Spire Clone - 游戏结束");
 }
 
@@ -590,19 +772,18 @@ void Game::drawMapScene()
             window.draw(outline);
         }
 
-        sf::Text label = makeText(mapNodeTypeName(node->type), 16,
-                                  selectable || selected ? sf::Color(246, 242, 226)
-                                                         : sf::Color(128, 128, 128));
-        const sf::FloatRect bounds = label.getLocalBounds();
-        label.setPosition({button.bounds.position.x +
-                               (button.bounds.size.x - bounds.size.x) / 2.0f -
-                               bounds.position.x,
-                           button.bounds.position.y +
-                               button.bounds.size.y + 8.0f});
-        label.setOutlineThickness(2.0f);
-        label.setOutlineColor(sf::Color(18, 18, 18, 210));
-        window.draw(label);
     }
+}
+
+void Game::drawRestScene()
+{
+    restView.draw(window, state, restSystem.getHealAmount(state),
+                  restedInCurrentRoom, statusMessage);
+}
+
+void Game::drawShopScene()
+{
+    shopView.draw(window, shopSystem, state, removingCardInShop, statusMessage);
 }
 
 void Game::drawResultOverlay()
@@ -697,6 +878,55 @@ bool Game::loadMapIconTextures()
     }
 
     return true;
+}
+
+bool Game::loadShopResources()
+{
+    if (!shopView.loadMerchantAnimation(kMerchantFramesPath))
+    {
+        lastError = std::string("无法加载商人动画: ") + kMerchantFramesPath;
+        return false;
+    }
+
+    return true;
+}
+
+bool Game::loadRestResources()
+{
+    restBackgroundLoaded = restBackgroundTexture.loadFromFile(kRestBackgroundPath);
+    if (!restBackgroundLoaded)
+    {
+        lastError = std::string("无法加载篝火背景: ") + kRestBackgroundPath;
+        return false;
+    }
+
+    return true;
+}
+
+bool Game::playMusic(const std::string& path, bool looping)
+{
+    if (path.empty())
+    {
+        stopMusic();
+        return true;
+    }
+
+    backgroundMusic.stop();
+    if (!backgroundMusic.openFromFile(path))
+    {
+        lastError = "无法加载背景音乐: " + path;
+        return false;
+    }
+
+    backgroundMusic.setLooping(looping);
+    backgroundMusic.setVolume(100.0f);
+    backgroundMusic.play();
+    return true;
+}
+
+void Game::stopMusic()
+{
+    backgroundMusic.stop();
 }
 
 const sf::Texture* Game::getMapNodeTexture(MapNodeType type) const
