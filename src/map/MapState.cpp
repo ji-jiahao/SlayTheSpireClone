@@ -1,72 +1,101 @@
-#include "map/MapState.hpp"
+#include "MapState.hpp"
+#include "MapGenerator.hpp"
 
-#include <algorithm>
-#include <utility>
-
-void MapState::reset(std::vector<MapNode> nodes)
+MapState::MapState()
 {
-    nodes_ = std::move(nodes);
-    completedNodeIds_.clear();
-    currentNodeId_ = -1;
-    currentNodeCompleted_ = true;
+	m_currentNode = nullptr;
 }
 
-bool MapState::chooseNode(int nodeId)
+MapState::~MapState()
 {
-    if (!isReachable(nodeId)) return false;
-    currentNodeId_ = nodeId;
-    currentNodeCompleted_ = false;
-    return true;
+	for(auto n : m_mapNodes)
+	{
+		delete n;
+	}
+	m_mapNodes.clear();
 }
 
-bool MapState::completeCurrentNode()
+void MapState::Enter()
 {
-    if (currentNodeId_ < 0 || currentNodeCompleted_) return false;
-    completedNodeIds_.insert(currentNodeId_);
-    currentNodeCompleted_ = true;
-    return true;
+	MapGenerator gen;
+	m_mapNodes = gen.GenerateMap(7);
+	if (!m_mapNodes.empty())
+	{
+		m_currentNode = m_mapNodes[0];
+		m_currentNode->visited = true;
+	}
+	UpdateReachable();
+	AudioManager::Instance().LoadMapBGM("assets/audio/map_bgm.ogg");
+	AudioManager::Instance().PlayMapBGM();
 }
 
-const std::vector<MapNode>& MapState::getNodes() const { return nodes_; }
-
-const MapNode* MapState::getCurrentNode() const
+void MapState::Exit()
 {
-    return findNode(currentNodeId_);
+	AudioManager::Instance().StopBGM();
 }
 
-bool MapState::isReachable(int nodeId) const
+void MapState::UpdateReachable()
 {
-    const MapNode* candidate = findNode(nodeId);
-    if (candidate == nullptr || isCompleted(nodeId) || !currentNodeCompleted_) return false;
-    if (currentNodeId_ < 0) return candidate->row == 0;
-
-    const MapNode* current = findNode(currentNodeId_);
-    if (current == nullptr) return false;
-    return std::find(current->nextNodeIds.begin(), current->nextNodeIds.end(), nodeId) !=
-           current->nextNodeIds.end();
+	for(auto n : m_mapNodes)
+	{
+		n->reachable = false;
+	}
+	if(!m_currentNode) return;
+	for(auto child : m_currentNode->children)
+	{
+		child->reachable = true;
+	}
 }
 
-bool MapState::isCompleted(int nodeId) const
+void MapState::Update(float dt)
 {
-    return completedNodeIds_.find(nodeId) != completedNodeIds_.end();
+
 }
 
-bool MapState::isActComplete() const
+void MapState::Render()
 {
-    const MapNode* current = getCurrentNode();
-    return current != nullptr && current->row == 16 && currentNodeCompleted_;
+	for(auto node : m_mapNodes)
+	{
+		for(auto child : node->children)
+		{
+		}
+	}
+
+	for(auto node : m_mapNodes)
+	{
+		switch(node->type)
+		{
+		case RoomType::Battle:
+			break;
+		case RoomType::Elite:
+			break;
+		case RoomType::Event:
+			break;
+		case RoomType::Shop:
+			break;
+		case RoomType::Rest:
+			break;
+		}
+	}
 }
 
-int MapState::getCurrentFloor() const
+void MapState::OnMouseClick(float mx, float my)
 {
-    const MapNode* current = getCurrentNode();
-    return current == nullptr ? 0 : current->row + 1;
+	if (!m_currentNode)
+		return;
+	for(auto node : m_mapNodes)
+	{
+		if(!node->reachable) continue;
+		float dx = mx - node->posX;
+		float dy = my - node->posY;
+		float dist = sqrt(dx*dx + dy*dy);
+		if(dist < 25.f)
+		{
+			m_currentNode = node;
+			node->visited = true;
+			UpdateReachable();
+			break;
+		}
+	}
 }
 
-const MapNode* MapState::findNode(int nodeId) const
-{
-    const auto found = std::find_if(nodes_.begin(), nodes_.end(), [nodeId](const MapNode& node) {
-        return node.id == nodeId;
-    });
-    return found == nodes_.end() ? nullptr : &*found;
-}

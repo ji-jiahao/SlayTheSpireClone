@@ -1,12 +1,13 @@
 #pragma once
-
-#include "map/MapNode.hpp"
-
-#include <cstdint>
+#include "MapNode.hpp"
 #include <vector>
 
 class MapGenerator
 {
 public:
-    std::vector<MapNode> generateActOne(std::uint32_t seed) const;
+	std::vector<MapNode*> GenerateMap(int totalLayer);
+private:
+	bool PathHasShop(MapNode* node);
+	void LayoutPosition(std::vector<MapNode*>& allNodes, int totalLayer, float width, float height);
 };
+

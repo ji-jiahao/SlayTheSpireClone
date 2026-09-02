@@ -1,81 +1,133 @@
-#include "map/MapGenerator.hpp"
+#include "MapGenerator.hpp"
+#include <cstdlib>
+#include <ctime>
+#include <cmath>
 
-#include <array>
-
-namespace
+bool MapGenerator::PathHasShop(MapNode* node)
 {
-constexpr int kFloorCount = 17;
-
-int nodeCountForRow(int row)
-{
-    return (row == 8 || row >= 14) ? 1 : 3;
+	MapNode* cur = node;
+	while (cur != nullptr)
+	{
+		if (cur->type == RoomType::Shop)
+		{
+			return true;
+		}
+		cur = cur->parent;
+	}
+	return false;
 }
 
-MapNodeType nodeTypeFor(int row, int column, std::uint32_t seed)
+void MapGenerator::LayoutPosition(std::vector<MapNode*>& allNodes, int totalLayer, float width, float height)
 {
-    if (row == 0) return MapNodeType::Battle;
-    if (row == 8 || row == 16) return MapNodeType::Treasure;
-    if (row == 14) return MapNodeType::Rest;
-    if (row == 15) return MapNodeType::Boss;
+	std::vector<std::vector<MapNode*>> layers(totalLayer);
+	for (auto n : allNodes)
+	{
+		layers[n->layer].push_back(n);
+	}
 
-    constexpr std::array<MapNodeType, 12> pattern = {
-        MapNodeType::Battle, MapNodeType::Unknown, MapNodeType::Battle,
-        MapNodeType::Rest, MapNodeType::Shop, MapNodeType::Battle,
-        MapNodeType::Battle, MapNodeType::Elite, MapNodeType::Unknown,
-        MapNodeType::Shop, MapNodeType::Battle, MapNodeType::Rest};
-    const std::size_t index = static_cast<std::size_t>((row * 3 + column + seed) % pattern.size());
-    return pattern[index];
-}
+	float layerStep = height / static_cast<float>(totalLayer - 1);
+	for (int l = 0; l < totalLayer; l++)
+	{
+		auto& list = layers[l];
+		int count = static_cast<int>(list.size());
+		float gap = width / static_cast<float>(count + 1);
+		for (int i = 0; i < count; i++)
+		{
+			list[i]->posY = l * layerStep;
+			list[i]->posX = gap * static_cast<float>(i + 1);
+		}
+	}
 }
 
-std::vector<MapNode> MapGenerator::generateActOne(std::uint32_t seed) const
+std::vector<MapNode*> MapGenerator::GenerateMap(int totalLayer)
 {
-    std::vector<MapNode> nodes;
-    std::array<int, kFloorCount> rowStarts{};
-    int nextId = 0;
+	srand(static_cast<unsigned int>(time(nullptr)));
+	std::vector<MapNode*> allNodes;
+	if (totalLayer <= 0)
+	{
+		return allNodes;
+	}
 
-    for (int row = 0; row < kFloorCount; ++row)
-    {
-        rowStarts[static_cast<std::size_t>(row)] = nextId;
-        const int count = nodeCountForRow(row);
-        for (int column = 0; column < count; ++column)
-        {
-            nodes.push_back({nextId++, row, column, nodeTypeFor(row, column, seed), {}});
-        }
-    }
+	MapNode* startNode = new MapNode();
+	startNode->layer = 0;
+	startNode->type = RoomType::Battle;
+	startNode->visited = false;
+	startNode->parent = nullptr;
+	startNode->reachable = true;
+	allNodes.push_back(startNode);
 
-    for (int row = 0; row < kFloorCount - 1; ++row)
-    {
-        const int currentCount = nodeCountForRow(row);
-        const int nextCount = nodeCountForRow(row + 1);
-        const int currentStart = rowStarts[static_cast<std::size_t>(row)];
-        const int nextStart = rowStarts[static_cast<std::size_t>(row + 1)];
+	int branchCount = 0;
+	const int maxBranch = 2;
+	std::vector<std::vector<MapNode*>> layers(totalLayer);
+	layers[0].push_back(startNode);
 
-        for (int column = 0; column < currentCount; ++column)
-        {
-            MapNode& node = nodes[static_cast<std::size_t>(currentStart + column)];
-            if (nextCount == 1)
-            {
-                node.nextNodeIds.push_back(nextStart);
-            }
-            else if (currentCount == 1)
-            {
-                for (int nextColumn = 0; nextColumn < nextCount; ++nextColumn)
-                {
-                    node.nextNodeIds.push_back(nextStart + nextColumn);
-                }
-            }
-            else
-            {
-                for (int nextColumn = 0; nextColumn < nextCount; ++nextColumn)
-                {
-                    if (nextColumn >= column - 1 && nextColumn <= column + 1)
-                    {
-                        node.nextNodeIds.push_back(nextStart + nextColumn);
-                    }
-                }
-            }
-        }
-    }
-    return nodes;
+	for (int l = 0; l < totalLayer - 1; l++)
+	{
+		for (auto node : layers[l])
+		{
+			int childNum = 1;
+			if (branchCount < maxBranch && rand() % 3 == 0)
+			{
+				childNum = 2;
+				branchCount++;
+			}
+			for (int c = 0; c < childNum; c++)
+			{
+				MapNode* child = new MapNode();
+				child->layer = l + 1;
+				child->visited = false;
+				child->parent = node;
+				child->reachable = false;
+				if (PathHasShop(node))
+				{
+					int r = rand() % 4;
+					if (r == 0)
+					{
+						child->type = RoomType::Battle;
+					}
+					else if (r == 1)
+					{
+						child->type = RoomType::Elite;
+					}
+					else if (r == 2)
+					{
+						child->type = RoomType::Event;
+					}
+					else
+					{
+						child->type = RoomType::Rest;
+					}
+				}
+				else
+				{
+					int r = rand() % 5;
+					if (r == 0)
+					{
+						child->type = RoomType::Battle;
+					}
+					else if (r == 1)
+					{
+						child->type = RoomType::Elite;
+					}
+					else if (r == 2)
+					{
+						child->type = RoomType::Event;
+					}
+					else if (r == 3)
+					{
+						child->type = RoomType::Shop;
+					}
+					else
+					{
+						child->type = RoomType::Rest;
+					}
+				}
+				node->children.push_back(child);
+				layers[l + 1].push_back(child);
+				allNodes.push_back(child);
+			}
+		}
+	}
+	LayoutPosition(allNodes, totalLayer, 800.f, 600.f);
+	return allNodes;
 }

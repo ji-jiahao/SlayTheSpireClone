@@ -1,23 +1,25 @@
 #pragma once
-
 #include <vector>
 
-enum class MapNodeType
+enum class RoomType
 {
-    Battle,
-    Elite,
-    Rest,
-    Shop,
-    Treasure,
-    Unknown,
-    Boss
+	Battle,
+	Elite,
+	Event,
+	Shop,
+	Rest
 };
 
 struct MapNode
 {
-    int id = -1;
-    int row = 0;
-    int column = 0;
-    MapNodeType type = MapNodeType::Battle;
-    std::vector<int> nextNodeIds;
+	int layer;
+	RoomType type;
+	std::vector<MapNode*> children;
+	bool visited;
+	MapNode* parent = nullptr;
+	float posX;
+	float posY;
+	bool reachable;
 };
+
+
