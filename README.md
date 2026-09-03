@@ -1,77 +1,191 @@
-# SlayTheSpireClone
+# 战斗模块（combat）
 
-基于 C++17 和 SFML 3 的课程设计项目。
+负责单场战斗的规则结算：玩家与敌人的状态、抽牌/弃牌/消耗、出牌与目标选择、回合流程、伤害公式、状态效果以及胜负判定。本模块**只做规则，不绘制 UI**，也不直接修改整局 `GameState`。
 
-所有环境配置、五人分工、接口约定、Event 规则、Git 流程和验收标准统一见 [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md)。
+> 分支：`feature/combat-system`。依赖 `src/card/`（卡牌定义与牌堆 `Deck`），不依赖 `ui/`、`map/`、`event/`。
 
-## 当前可玩版本
+## 文件清单
 
-目前 `main` 提供第一版单场战斗闭环：
+```text
+src/combat/
+├── Player.hpp / .cpp          玩家战斗状态（生命、能量、格挡、力量、虚弱、易伤）
+├── Enemy.hpp / .cpp           敌人状态（生命、意图伤害、力量、虚弱、易伤）
+├── CombatSystem.hpp / .cpp    战斗总控：多敌人、出牌、目标、回合、胜负
+```
 
-- 铁甲战士 80 点生命、3 点能量和原版 5/4/1 初始牌组。
-- 邪教徒 40 点生命，显示 6 点攻击意图。
-- 点击手牌出牌，支持伤害、格挡、能量、力量、虚弱和易伤的基础结算。
-- 痛击施加易伤，易伤期间攻击造成 1.5 倍伤害。
-- 点击“结束回合”后，弃掉手牌、敌人攻击并重新抽 5 张牌。
-- 战斗胜利后，“燃烧之血”回复 6 点生命；按 `R` 可重新战斗。
+## 公共接口
 
-铁甲战士 74 张卡牌的数据和升级数据已经建立，但当前可玩闭环只使用初始牌组。复杂卡牌的条件触发、能力牌、选牌、X 费、多敌人和完整消耗机制仍需后续实现。
+### BattleResult
 
-## 开发环境
+```cpp
+enum class BattleResult { Active, Victory, Defeat };
+```
 
-- Windows 10/11 x64
-- Visual Studio 2022
-- Visual Studio 工作负载：使用 C++ 的桌面开发
-- Git
-- 可访问 GitHub 的网络（首次配置时下载 SFML 3.0.1）
+### 敌人与遭遇
 
-不需要手动安装 SFML。CMake 会下载固定的 VS2022 x64 预编译包，并在编译后把所需 DLL 复制到 exe 旁边。
+```cpp
+struct EnemySpawnDefinition {
+    std::string name = "邪教徒";
+    int health = 40;
+    int intentDamage = 6;
+};
 
-## 第一次运行
+struct EncounterDefinition {
+    std::vector<EnemySpawnDefinition> enemies{{}}; // 默认 1 个邪教徒，EncounterDefinition{} 兼容旧调用
+};
+```
 
-1. 克隆仓库，不要只下载或复制某个 `.cpp` 文件。
-2. 在 Visual Studio 2022 中选择“打开本地文件夹”，打开仓库根目录。
-3. 等待 CMake 配置结束。首次配置会下载约 37 MB 的 SFML，因此会稍慢。
-4. 配置选择 `windows-x64`，启动目标选择 `SlayTheSpire.exe`。
-5. 按 `Ctrl+F5` 运行，或按 `F5` 调试。
+### CombatSystem
 
-也可以在“开发人员 PowerShell”中构建：
+```cpp
+class CombatSystem {
+public:
+    CombatSystem();
+
+    void startBattle(int currentHealth = 80, std::uint32_t seed = 0);
+    void startBattle(int currentHealth, std::uint32_t seed, std::vector<Card> cards);
+    void startBattle(int currentHealth, std::uint32_t seed, std::vector<Card> cards,
+                     const EncounterDefinition& encounter, int startingBlock,
+                     int startingStrength, int startingEnergy = 0,
+                     int extraDrawCards = 0, int maxHealth = 80);
+
+    bool playCard(int handIndex, int targetEnemyIndex);
+    void endPlayerTurn();
+    void update();
+
+    const Player& getPlayer() const;
+    const std::vector<Enemy>& getEnemies() const;
+    const Enemy& getEnemyAt(std::size_t index) const;
+    const std::vector<Card>& getHandCards() const;
+    const Deck& getDeck() const;
+    BattleResult getResult() const;
+};
+```
+
+- `startBattle(...)`：用 `EncounterDefinition` 构造多个敌人，洗牌后抽 5 张（外加遗物带来的额外抽牌），并应用开战格挡/力量/能量等修正。
+- `playCard(handIndex, targetEnemyIndex)`：打出手牌中第 `handIndex` 张牌，作用于第 `targetEnemyIndex` 个敌人。
+- `endPlayerTurn()`：弃掉手牌，每个存活敌人各攻击玩家一次，然后玩家进入下一回合并抽牌。
+- `getEnemyAt(index)`：越界会抛 `std::out_of_range`，调用方需自行保证索引有效。
+
+### Player（战斗状态）
+
+```cpp
+class Player {
+public:
+    Player(int maxHealth = 80, int maxEnergy = 3, int currentHealth = -1);
+    void startTurn(); void endTurn();
+    void takeDamage(int amount); void loseHealth(int amount);
+    void gainBlock(int amount); void gainEnergy(int amount);
+    bool spendEnergy(int amount);
+    void applyStrength(int amount); void applyWeak(int turns); void applyVulnerable(int turns);
+    // 及对应 getter
+};
+```
+
+### Enemy
+
+```cpp
+class Enemy {
+public:
+    Enemy(std::string name = "Cultist", int maxHealth = 40);
+    void takeDamage(int amount); void setIntentDamage(int amount);
+    void applyStrength(int amount); void applyWeak(int turns); void applyVulnerable(int turns);
+    void endTurn();
+    bool isDead() const;
+    // 及对应 getter
+};
+```
+
+## 目标选择语义
+
+`playCard` 的目标参数行为取决于卡牌效果里的 `CardTarget`（定义于 `src/card/Card.hpp`）：
+
+| 卡牌目标 | 代表卡牌 | `targetEnemyIndex` 行为 |
+|---|---|---|
+| `Enemy`（单目标） | 打击、痛击、上勾拳 | **必须**为有效存活敌人索引，否则 `playCard` 返回 `false` 且不消耗能量 |
+| `AllEnemies` | 顺劈斩、献祭 | 索引被忽略，对全体存活敌人结算 |
+| `RandomEnemy` | 剑舞 | 索引被忽略，随机命中（当前实现等价于全体均摊） |
+| `Self` / `None` | 防御、肌肉强化 | 索引被忽略，作用于玩家 |
+
+判定“单目标牌”的依据：卡牌效果中存在 `target == CardTarget::Enemy` 即视为单目标。
+
+## 出牌流程（playCard）
+
+```text
+校验手牌索引
+→ 若为单目标牌，校验 targetEnemyIndex 有效且目标存活（否则返回 false）
+→ 校验能量足够并消耗能量（cost < 0 视为不可打出）
+→ 消耗牌进入消耗堆，或进入弃牌堆
+→ 按顺序结算卡牌效果（resolveEffect）
+→ 若所有敌人死亡 → Victory；若玩家生命 ≤ 0 → Defeat
+```
+
+## 效果结算（resolveEffect）
+
+| CardEffectType | 结算 |
+|---|---|
+| `Damage` | 对目标敌人造成 `calculatePlayerDamage(value, target)` |
+| `MultiDamage` | 对每个存活敌人各结算 `hits_N` 次（`hits_` 前缀参数控制段数，默认 1 段） |
+| `Block` / `Draw` / `GainEnergy` / `LoseHealth` | 作用于玩家 |
+| `ApplyStrength` / `ApplyWeak` / `ApplyVulnerable` | `Enemy` 目标作用于指定敌人；`AllEnemies` 作用于全体存活敌人；其余作用于玩家 |
+| `Exhaust` | `random_hand` / `choose_hand` 当前消耗手牌第一张 |
+
+## 伤害公式
+
+- 玩家对敌人：`max(0, base + 玩家力量)`，玩家虚弱时 `×0.75`，目标易伤时 `×1.5`，向下取整。
+- 敌人对玩家：`max(0, base + 敌人力量)`，敌人虚弱时 `×0.75`，玩家易伤时 `×1.5`，向下取整。
+
+## 回合流程（endPlayerTurn）
+
+```text
+弃掉手牌 → 玩家结束回合（虚弱/易伤层数 -1）
+→ 每个存活敌人依次攻击玩家
+→ 玩家生命 ≤ 0 → Defeat
+→ 玩家开始新回合（格挡清零、能量回满）并抽 5 张
+```
+
+## 使用示例
+
+### 单敌人
+
+```cpp
+CombatSystem combat;
+combat.startBattle(80, seed, CardDatabase::createStarterDeck());
+combat.playCard(0, 0);   // 打出第 0 张牌，目标为第 0 个敌人
+```
+
+### 多敌人点选
+
+```cpp
+EncounterDefinition encounter;
+encounter.enemies = {{"邪教徒", 40, 6}, {"酸液史莱姆", 30, 8}};
+
+CombatSystem combat;
+combat.startBattle(80, seed, CardDatabase::createStarterDeck(), encounter, 0, 0);
+// UI 层把鼠标点到的敌人换算成索引传入：
+combat.playCard(0, 1);   // 只对第 1 个敌人结算
+```
+
+### AOE（无需指定目标）
+
+```cpp
+CombatSystem combat;
+combat.startBattle(80, seed, {CardDatabase::createById("cleave")}, twoEnemies, 0, 0);
+combat.playCard(0, 0);   // 顺劈斩：索引被忽略，全体敌人掉血
+```
+
+## 与 UI / 上层对接要点
+
+- 战斗结果通过 `getResult()` 读取；`Victory` 表示**所有敌人死亡**，`Defeat` 表示玩家生命 ≤ 0。
+- UI 需要：把鼠标位置换算为敌人索引，单目标牌要求玩家点选一个存活敌人，AOE/无目标牌直接 `playCard(index, 0)`。
+- 敌人数量与状态通过 `getEnemies()` / `getEnemyAt(index)` 读取并绘制。
+- 多敌人战斗由上层在 `startBattle` 时通过 `EncounterDefinition` 传入。
+
+## 测试
+
+`tests/combat_tests.cpp` 覆盖：单敌人伤害/格挡/易伤结算、能量不足禁止出牌、胜利判定、遗物开战修正，以及多敌人的点选目标、AOE、无效目标拒绝、全体阵亡胜利、多敌人各自攻击。
 
 ```powershell
-cmake --preset windows-x64
 cmake --build --preset debug
-ctest --test-dir out/build/windows-x64 -C Debug --output-on-failure
+ctest -R CombatTests
 ```
-
-## 协作规则
-
-完整协作步骤见 [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md)。
-
-不要提交 `out/`、`.vs/`、`.obj`、`.exe` 或 DLL；这些文件由每台电脑自行生成。
-
-每项功能使用独立分支，例如：
-
-```powershell
-git switch main
-git pull
-git switch -c feature/card-system
-```
-
-完成并本地编译通过后：
-
-```powershell
-git add .
-git commit -m "feat: add card system"
-git push -u origin feature/card-system
-```
-
-然后在 GitHub 创建 Pull Request，由另一名成员检查后合并到 `main`。不要让五个人同时直接修改并推送 `main`。
-
-新增 `.cpp` 文件后，还要把它加入 `CMakeLists.txt` 中对应目标，否则不会参与编译。
-
-## 常见问题
-
-- 找不到编译器：在 Visual Studio Installer 安装“使用 C++ 的桌面开发”。
-- 下载 SFML 失败：检查 Git 和 GitHub 网络，然后在 Visual Studio 中删除 CMake 缓存并重新配置。
-- 启动目标错误：选择 `SlayTheSpire.exe`，不要选择 `ALL_BUILD` 或 `ZERO_CHECK`。
-- 图片或字体找不到：使用项目内的相对路径，例如 `assets/images/card.png`，不要写个人电脑的绝对路径。

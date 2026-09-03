@@ -12,16 +12,12 @@ namespace
 {
 constexpr int kPlayerMaxHealth = 80;
 constexpr int kPlayerMaxEnergy = 3;
+constexpr int kCultistMaxHealth = 40;
+constexpr int kCultistIntentDamage = 6;
 constexpr std::size_t kHandSize = 5;
-constexpr std::size_t kMaxHandSize = 10;
 
-int hitCount(const CardEffect& effect, int energySpent)
+int hitCount(const CardEffect& effect)
 {
-    if (effect.parameter == "x_cost")
-    {
-        return std::max(0, energySpent);
-    }
-
     constexpr const char* prefix = "hits_";
     if (effect.parameter.rfind(prefix, 0) != 0)
     {
@@ -38,35 +34,25 @@ int hitCount(const CardEffect& effect, int energySpent)
     }
 }
 
-bool hasTrigger(const CardEffect& effect)
+bool hasSingleEnemyTarget(const Card& card)
 {
-    return effect.parameter == "start_turn" || effect.parameter == "end_turn" ||
-           effect.parameter == "on_attack_played" || effect.parameter == "on_exhaust";
-}
+    for (const CardEffect& effect : card.effects)
+    {
+        if (effect.target == CardTarget::Enemy)
+        {
+            return true;
+        }
+    }
 
-Card makeSlimedCard()
-{
-    Card card;
-    card.id = "slimed";
-    card.name = "黏液";
-    card.type = CardType::Skill;
-    card.rarity = CardRarity::Status;
-    card.cost = 1;
-    card.description = "消耗。";
-    card.effects = {{CardEffectType::Exhaust, 1, CardTarget::Self, {}}};
-    return card;
+    return false;
 }
-}
+} // namespace
 
 CombatSystem::CombatSystem()
     : player(kPlayerMaxHealth, kPlayerMaxEnergy),
-      enemies{Enemy("邪教徒", 40)},
-      deck(),
-      result(BattleResult::Active),
-      selectedTargetIndex(0),
-      randomEngine(0)
+      enemies{Enemy("邪教徒", kCultistMaxHealth)}, deck(), result(BattleResult::Active)
 {
-    enemies.front().setIntentDamage(6);
+    enemies[0].setIntentDamage(kCultistIntentDamage);
 }
 
 void CombatSystem::startBattle(int currentHealth, std::uint32_t seed)
@@ -76,8 +62,7 @@ void CombatSystem::startBattle(int currentHealth, std::uint32_t seed)
 
 void CombatSystem::startBattle(int currentHealth, std::uint32_t seed, std::vector<Card> cards)
 {
-    startBattle(currentHealth, seed, std::move(cards),
-                std::vector<EncounterDefinition>{EncounterDefinition{}});
+    startBattle(currentHealth, seed, std::move(cards), EncounterDefinition{}, 0, 0);
 }
 
 void CombatSystem::startBattle(int currentHealth, std::uint32_t seed, std::vector<Card> cards,
@@ -85,66 +70,31 @@ void CombatSystem::startBattle(int currentHealth, std::uint32_t seed, std::vecto
                                int startingStrength, int startingEnergy,
                                int extraDrawCards, int maxHealth)
 {
-    startBattle(currentHealth, seed, std::move(cards),
-                std::vector<EncounterDefinition>{encounter}, startingBlock,
-                startingStrength, startingEnergy, extraDrawCards, maxHealth);
-}
-
-void CombatSystem::startBattle(int currentHealth, std::uint32_t seed, std::vector<Card> cards,
-                               std::vector<EncounterDefinition> encounters, int startingBlock,
-                               int startingStrength, int startingEnergy,
-                               int extraDrawCards, int maxHealth)
-{
-    if (encounters.empty())
-    {
-        encounters.push_back(EncounterDefinition{});
-    }
-
     player = Player(maxHealth, kPlayerMaxEnergy, currentHealth);
     enemies.clear();
-    enemies.reserve(encounters.size());
-    for (std::size_t index = 0; index < encounters.size(); ++index)
+    for (const EnemySpawnDefinition& spawn : encounter.enemies)
     {
-        const EncounterDefinition& encounter = encounters[index];
-        enemies.emplace_back(encounter.enemyId, encounter.enemyName, encounter.enemyHealth,
-                             seed + 97u + static_cast<std::uint32_t>(index));
-        if (enemies.back().getArchetype() == EnemyArchetype::Generic)
-        {
-            enemies.back().setIntentDamage(encounter.intentDamage);
-        }
+        Enemy enemy(spawn.name, spawn.health);
+        enemy.setIntentDamage(spawn.intentDamage);
+        enemies.push_back(std::move(enemy));
+    }
+
+    if (enemies.empty())
+    {
+        enemies.emplace_back("邪教徒", kCultistMaxHealth);
+        enemies[0].setIntentDamage(kCultistIntentDamage);
     }
 
     deck = Deck(std::move(cards));
     deck.shuffle(seed);
-    activePowerEffects.clear();
-    deathPowerApplied.assign(enemies.size(), false);
     result = BattleResult::Active;
-    selectedTargetIndex = 0;
-    randomEngine.seed(seed + 31337u);
-
     player.gainBlock(startingBlock);
     player.applyStrength(startingStrength);
     player.gainEnergy(startingEnergy);
     drawHand(kHandSize + static_cast<std::size_t>(std::max(0, extraDrawCards)));
 }
 
-bool CombatSystem::selectTarget(int enemyIndex)
-{
-    if (!isLivingTarget(enemyIndex))
-    {
-        return false;
-    }
-
-    selectedTargetIndex = enemyIndex;
-    return true;
-}
-
-bool CombatSystem::playCard(int handIndex)
-{
-    return playCard(handIndex, selectedTargetIndex);
-}
-
-bool CombatSystem::playCard(int handIndex, int targetIndex)
+bool CombatSystem::playCard(int handIndex, int targetEnemyIndex)
 {
     if (result != BattleResult::Active || handIndex < 0 ||
         static_cast<std::size_t>(handIndex) >= deck.getHand().size())
@@ -154,25 +104,25 @@ bool CombatSystem::playCard(int handIndex, int targetIndex)
 
     const std::size_t index = static_cast<std::size_t>(handIndex);
     const Card card = deck.getHand()[index];
-    if (requiresTarget(card) && !selectTarget(targetIndex))
+
+    if (hasSingleEnemyTarget(card) && !isValidEnemyTarget(targetEnemyIndex))
     {
         return false;
     }
 
-    const int energySpent = card.cost < 0 ? player.getCurrentEnergy() : card.cost;
-    if (!player.spendEnergy(energySpent))
+    if (card.cost < 0 || !player.spendEnergy(card.cost))
     {
         return false;
     }
 
-    const bool exhaustPlayedCard = card.type == CardType::Power || std::any_of(
+    const bool exhaustPlayedCard = std::any_of(
         card.effects.begin(), card.effects.end(), [](const CardEffect& effect) {
             return effect.type == CardEffectType::Exhaust && effect.parameter.empty();
         });
+
     if (exhaustPlayedCard)
     {
         deck.exhaustCard(index);
-        resolveTriggeredPowers("on_exhaust", targetIndex);
     }
     else
     {
@@ -181,26 +131,22 @@ bool CombatSystem::playCard(int handIndex, int targetIndex)
 
     for (const CardEffect& effect : card.effects)
     {
-        // 能力牌的带触发条件效果在本场战斗持续生效，而不是立即结算。
-        if (card.type == CardType::Power && hasTrigger(effect))
-        {
-            activePowerEffects.push_back(effect);
-            continue;
-        }
-
-        resolveEffect(effect, targetIndex, energySpent);
-        updateBattleResult();
-        if (result != BattleResult::Active)
+        resolveEffect(effect, targetEnemyIndex);
+        if (player.getCurrentHealth() <= 0)
         {
             break;
         }
     }
 
-    if (card.type == CardType::Attack && result == BattleResult::Active)
+    if (std::all_of(enemies.begin(), enemies.end(),
+                    [](const Enemy& enemy) { return enemy.isDead(); }))
     {
-        resolveTriggeredPowers("on_attack_played", targetIndex);
+        result = BattleResult::Victory;
     }
-    updateBattleResult();
+    else if (player.getCurrentHealth() <= 0)
+    {
+        result = BattleResult::Defeat;
+    }
     return true;
 }
 
@@ -213,12 +159,6 @@ void CombatSystem::endPlayerTurn()
 
     deck.discardHand();
     player.endTurn();
-    resolveTriggeredPowers("end_turn");
-    updateBattleResult();
-    if (result != BattleResult::Active)
-    {
-        return;
-    }
 
     for (Enemy& enemy : enemies)
     {
@@ -226,28 +166,19 @@ void CombatSystem::endPlayerTurn()
         {
             continue;
         }
-        enemy.startTurn();
-        resolveEnemyIntent(enemy);
+
+        player.takeDamage(calculateEnemyDamage(enemy.getIntentDamage(), enemy));
         enemy.endTurn();
-        if (player.getCurrentHealth() <= 0)
-        {
-            result = BattleResult::Defeat;
-            return;
-        }
-        if (!enemy.isDead())
-        {
-            enemy.advanceIntent();
-        }
     }
 
-    selectedTargetIndex = firstLivingEnemyIndex();
-    player.startTurn();
-    resolveTriggeredPowers("start_turn", selectedTargetIndex);
-    updateBattleResult();
-    if (result == BattleResult::Active)
+    if (player.getCurrentHealth() <= 0)
     {
-        drawHand();
+        result = BattleResult::Defeat;
+        return;
     }
+
+    player.startTurn();
+    drawHand();
 }
 
 void CombatSystem::update()
@@ -255,138 +186,49 @@ void CombatSystem::update()
 }
 
 const Player& CombatSystem::getPlayer() const { return player; }
-const Enemy& CombatSystem::getEnemy() const
-{
-    return enemies[static_cast<std::size_t>(selectedTargetIndex >= 0 ? selectedTargetIndex : 0)];
-}
 const std::vector<Enemy>& CombatSystem::getEnemies() const { return enemies; }
-int CombatSystem::getSelectedTargetIndex() const { return selectedTargetIndex; }
+const Enemy& CombatSystem::getEnemyAt(std::size_t index) const { return enemies.at(index); }
 const std::vector<Card>& CombatSystem::getHandCards() const { return deck.getHand(); }
 const Deck& CombatSystem::getDeck() const { return deck; }
-int CombatSystem::getEnemyIntentDamage() const
-{
-    return getEnemyIntentDamage(static_cast<std::size_t>(std::max(0, selectedTargetIndex)));
-}
-int CombatSystem::getEnemyIntentDamage(std::size_t enemyIndex) const
-{
-    if (enemyIndex >= enemies.size())
-    {
-        return 0;
-    }
-    return calculateEnemyDamage(enemies[enemyIndex].getIntent().damage, enemies[enemyIndex]);
-}
 BattleResult CombatSystem::getResult() const { return result; }
 
-bool CombatSystem::hasLivingEnemies() const
+void CombatSystem::resolveEffect(const CardEffect& effect, int targetEnemyIndex)
 {
-    return std::any_of(enemies.begin(), enemies.end(), [](const Enemy& enemy) {
-        return !enemy.isDead();
-    });
-}
-
-bool CombatSystem::isLivingTarget(int enemyIndex) const
-{
-    return enemyIndex >= 0 && static_cast<std::size_t>(enemyIndex) < enemies.size() &&
-           !enemies[static_cast<std::size_t>(enemyIndex)].isDead();
-}
-
-int CombatSystem::firstLivingEnemyIndex() const
-{
-    for (std::size_t index = 0; index < enemies.size(); ++index)
-    {
-        if (!enemies[index].isDead())
-        {
-            return static_cast<int>(index);
-        }
-    }
-    return -1;
-}
-
-bool CombatSystem::requiresTarget(const Card& card) const
-{
-    return std::any_of(card.effects.begin(), card.effects.end(), [](const CardEffect& effect) {
-        return effect.target == CardTarget::Enemy;
-    });
-}
-
-void CombatSystem::resolveEnemyIntent(Enemy& actingEnemy)
-{
-    const EnemyIntent intent = actingEnemy.getIntent();
-    for (int hit = 0; hit < std::max(1, intent.hits); ++hit)
-    {
-        if (intent.damage > 0)
-        {
-            player.takeDamage(calculateEnemyDamage(intent.damage, actingEnemy));
-        }
-        if (player.getCurrentHealth() <= 0)
-        {
-            break;
-        }
-    }
-    actingEnemy.gainBlock(intent.block);
-    actingEnemy.applyStrength(intent.strength);
-    player.applyWeak(intent.weak);
-    player.applyVulnerable(intent.vulnerable);
-    player.applyFrail(intent.frail);
-    player.applyDexterity(intent.dexterity);
-    if (intent.slimed > 0)
-    {
-        deck.addToDiscardPile(makeSlimedCard(), static_cast<std::size_t>(intent.slimed));
-    }
-    if (intent.type == EnemyIntentType::Split)
-    {
-        actingEnemy.resolveSplit();
-    }
-}
-
-void CombatSystem::resolveEffect(const CardEffect& effect, int targetIndex, int energySpent)
-{
-    const auto applyToTarget = [&](auto&& action) {
-        if (effect.target == CardTarget::AllEnemies)
-        {
-            for (Enemy& enemy : enemies)
-            {
-                if (!enemy.isDead()) action(enemy);
-            }
-        }
-        else if (effect.target == CardTarget::RandomEnemy)
-        {
-            std::vector<std::size_t> living;
-            for (std::size_t index = 0; index < enemies.size(); ++index)
-            {
-                if (!enemies[index].isDead()) living.push_back(index);
-            }
-            if (!living.empty())
-            {
-                const std::size_t choice = std::uniform_int_distribution<std::size_t>(0, living.size() - 1)(randomEngine);
-                action(enemies[living[choice]]);
-            }
-        }
-        else if (isLivingTarget(targetIndex))
-        {
-            action(enemies[static_cast<std::size_t>(targetIndex)]);
-        }
-    };
-
     switch (effect.type)
     {
     case CardEffectType::Damage:
-    case CardEffectType::MultiDamage:
-    {
-        const int hits = effect.type == CardEffectType::MultiDamage ? hitCount(effect, energySpent) : 1;
-        for (int hit = 0; hit < hits; ++hit)
+        if (isValidEnemyTarget(targetEnemyIndex))
         {
-            applyToTarget([&](Enemy& target) {
-                if (!target.isDead()) target.takeDamage(calculatePlayerDamage(effect.value, target));
-            });
+            const Enemy& target = enemies[static_cast<std::size_t>(targetEnemyIndex)];
+            enemies[static_cast<std::size_t>(targetEnemyIndex)].takeDamage(
+                calculatePlayerDamage(effect.value, target));
         }
         break;
-    }
+    case CardEffectType::MultiDamage:
+        for (std::size_t enemyIndex = 0; enemyIndex < enemies.size(); ++enemyIndex)
+        {
+            if (enemies[enemyIndex].isDead())
+            {
+                continue;
+            }
+
+            for (int hit = 0; hit < hitCount(effect); ++hit)
+            {
+                if (enemies[enemyIndex].isDead())
+                {
+                    break;
+                }
+
+                enemies[enemyIndex].takeDamage(
+                    calculatePlayerDamage(effect.value, enemies[enemyIndex]));
+            }
+        }
+        break;
     case CardEffectType::Block:
-        player.gainCardBlock(effect.value);
+        player.gainBlock(effect.value);
         break;
     case CardEffectType::Draw:
-        drawHand(static_cast<std::size_t>(std::max(0, effect.value)));
+        deck.drawCards(static_cast<std::size_t>(std::max(0, effect.value)));
         break;
     case CardEffectType::GainEnergy:
         player.gainEnergy(effect.value);
@@ -395,46 +237,83 @@ void CombatSystem::resolveEffect(const CardEffect& effect, int targetIndex, int 
         player.loseHealth(effect.value);
         break;
     case CardEffectType::ApplyStrength:
-        if (effect.target == CardTarget::Enemy || effect.target == CardTarget::AllEnemies ||
-            effect.target == CardTarget::RandomEnemy)
-            applyToTarget([&](Enemy& target) { target.applyStrength(effect.value); });
+        if (effect.target == CardTarget::Enemy)
+        {
+            if (isValidEnemyTarget(targetEnemyIndex))
+            {
+                enemies[static_cast<std::size_t>(targetEnemyIndex)].applyStrength(effect.value);
+            }
+        }
+        else if (effect.target == CardTarget::AllEnemies)
+        {
+            for (Enemy& enemy : enemies)
+            {
+                if (!enemy.isDead())
+                {
+                    enemy.applyStrength(effect.value);
+                }
+            }
+        }
         else
+        {
             player.applyStrength(effect.value);
+        }
         break;
     case CardEffectType::ApplyWeak:
-        if (effect.target == CardTarget::Enemy || effect.target == CardTarget::AllEnemies ||
-            effect.target == CardTarget::RandomEnemy)
-            applyToTarget([&](Enemy& target) { target.applyWeak(effect.value); });
+        if (effect.target == CardTarget::Enemy)
+        {
+            if (isValidEnemyTarget(targetEnemyIndex))
+            {
+                enemies[static_cast<std::size_t>(targetEnemyIndex)].applyWeak(effect.value);
+            }
+        }
+        else if (effect.target == CardTarget::AllEnemies)
+        {
+            for (Enemy& enemy : enemies)
+            {
+                if (!enemy.isDead())
+                {
+                    enemy.applyWeak(effect.value);
+                }
+            }
+        }
         else
+        {
             player.applyWeak(effect.value);
+        }
         break;
     case CardEffectType::ApplyVulnerable:
-        if (effect.target == CardTarget::Enemy || effect.target == CardTarget::AllEnemies ||
-            effect.target == CardTarget::RandomEnemy)
-            applyToTarget([&](Enemy& target) { target.applyVulnerable(effect.value); });
+        if (effect.target == CardTarget::Enemy)
+        {
+            if (isValidEnemyTarget(targetEnemyIndex))
+            {
+                enemies[static_cast<std::size_t>(targetEnemyIndex)].applyVulnerable(effect.value);
+            }
+        }
+        else if (effect.target == CardTarget::AllEnemies)
+        {
+            for (Enemy& enemy : enemies)
+            {
+                if (!enemy.isDead())
+                {
+                    enemy.applyVulnerable(effect.value);
+                }
+            }
+        }
         else
+        {
             player.applyVulnerable(effect.value);
+        }
         break;
     case CardEffectType::Exhaust:
-        if ((effect.parameter == "random_hand" || effect.parameter == "choose_hand") && !deck.getHand().empty())
+        if ((effect.parameter == "random_hand" || effect.parameter == "choose_hand") &&
+            !deck.getHand().empty())
         {
             deck.exhaustCard(0);
-            resolveTriggeredPowers("on_exhaust", targetIndex);
         }
         break;
     default:
         break;
-    }
-}
-
-void CombatSystem::resolveTriggeredPowers(const char* trigger, int targetIndex)
-{
-    for (const CardEffect& effect : activePowerEffects)
-    {
-        if (effect.parameter == trigger)
-        {
-            resolveEffect(effect, targetIndex, 0);
-        }
     }
 }
 
@@ -446,40 +325,21 @@ int CombatSystem::calculatePlayerDamage(int baseDamage, const Enemy& target) con
     return std::max(0, static_cast<int>(std::floor(damage)));
 }
 
-int CombatSystem::calculateEnemyDamage(int baseDamage, const Enemy& source) const
+int CombatSystem::calculateEnemyDamage(int baseDamage, const Enemy& enemy) const
 {
-    double damage = static_cast<double>(std::max(0, baseDamage + source.getStrength()));
-    if (source.getWeak() > 0) damage *= 0.75;
+    double damage = static_cast<double>(std::max(0, baseDamage + enemy.getStrength()));
+    if (enemy.getWeak() > 0) damage *= 0.75;
     if (player.getVulnerable() > 0) damage *= 1.5;
     return std::max(0, static_cast<int>(std::floor(damage)));
 }
 
-void CombatSystem::drawHand(std::size_t count)
+bool CombatSystem::isValidEnemyTarget(int index) const
 {
-    const std::size_t handSize = deck.getHand().size();
-    if (handSize < kMaxHandSize)
-    {
-        deck.drawCards(std::min(count, kMaxHandSize - handSize));
-    }
+    return index >= 0 && static_cast<std::size_t>(index) < enemies.size() &&
+           !enemies[static_cast<std::size_t>(index)].isDead();
 }
 
-void CombatSystem::updateBattleResult()
+void CombatSystem::drawHand(std::size_t count)
 {
-    for (std::size_t index = 0; index < enemies.size(); ++index)
-    {
-        if (enemies[index].isDead() && !deathPowerApplied[index] &&
-            enemies[index].getDeathVulnerable() > 0)
-        {
-            player.applyVulnerable(enemies[index].getDeathVulnerable());
-            deathPowerApplied[index] = true;
-        }
-    }
-    if (player.getCurrentHealth() <= 0)
-    {
-        result = BattleResult::Defeat;
-    }
-    else if (!hasLivingEnemies())
-    {
-        result = BattleResult::Victory;
-    }
+    deck.drawCards(count);
 }
