@@ -1,13 +1,15 @@
 #pragma once
-#include "MapNode.hpp"
 #include <vector>
+#include "MapNode.hpp"
+#include <SFML/Graphics.hpp>
 
 class MapGenerator
 {
 public:
-	std::vector<MapNode*> GenerateMap(int totalLayer);
-private:
-	bool PathHasShop(MapNode* node);
-	void LayoutPosition(std::vector<MapNode*>& allNodes, int totalLayer, float width, float height);
+    bool PathHasShop(MapNode* node);
+    void LayoutPosition(std::vector<MapNode*>& allNodes, int totalLayer, float width, float height);
+    std::vector<MapNode*> GenerateMap(int totalLayer);
+    std::vector<sf::Vector2f> GetPolyLinePoints(float px, float py, float cx, float cy);
 };
+
 

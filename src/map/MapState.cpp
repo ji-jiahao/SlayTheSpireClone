@@ -1,101 +1,82 @@
-#include "MapState.hpp"
 #include "MapGenerator.hpp"
+#include <cstdlib>
+#include <ctime>
+#include <algorithm>
+#include <cmath>
 
-MapState::MapState()
+std::vector<MapNode*> MapGenerator::GenerateMap(int totalLayer)
 {
-	m_currentNode = nullptr;
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+    std::vector<MapNode*> allNodes;
+    if (totalLayer <= 0)
+        return allNodes;
+
+    const float leftBound = 100.f;
+    const float rightBound = 900.f;
+    const float layerGap = 120.f;
+    std::vector<std::vector<MapNode*>> layers(totalLayer);
+
+    //起点
+    MapNode* start = new MapNode();
+    start->position = {(leftBound + rightBound) / 2.0f, 30.f};
+    layers[0].push_back(start);
+    allNodes.push_back(start);
+
+    for (int level = 1; level < totalLayer; level++)
+    {
+        int roomNum = 2 + std::rand() % 3;
+        std::vector<MapNode*> currLayer;
+        float segWidth = (rightBound - leftBound) / (roomNum - 1);
+
+        for (int i = 0; i < roomNum; i++)
+        {
+            MapNode* node = new MapNode();
+            node->position.y = 30.f + level * layerGap;
+            node->position.x = leftBound + i * segWidth;
+            node->position.x += float(std::rand() % 21 - 10);
+            currLayer.push_back(node);
+            allNodes.push_back(node);
+        }
+        layers[level] = currLayer;
+
+        auto& prevLayer = layers[level - 1];
+        std::vector<int> childConnectCount(currLayer.size(),0);
+        //上层从左向右遍历，下层保持左右顺序，不跨序连接
+        for (int upIdx = 0; upIdx < prevLayer.size(); upIdx++)
+        {
+            MapNode* upNode = prevLayer[upIdx];
+            int maxChild = 1 + std::rand() % 2;
+            int linkCount = 0;
+
+            //从和上层序号接近的下层开始选，不向很远的左右两端连接
+            int startDown = std::max(0, upIdx - 1);
+            int endDown = std::min((int)currLayer.size()-1, upIdx + 1);
+
+            for(int downIdx = startDown; downIdx <= endDown; downIdx++)
+            {
+                if(linkCount >= maxChild) break;
+                //限制每个下层节点最多接收2条连线，防止线条扎堆
+                if(childConnectCount[downIdx] >=2)
+                    continue;
+
+                MapNode* downNode = currLayer[downIdx];
+                bool duplicate = false;
+                for(auto ch : upNode->children)
+                {
+                    if(ch == downNode)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if(!duplicate)
+                {
+                    upNode->children.push_back(downNode);
+                    childConnectCount[downIdx]++;
+                    linkCount++;
+                }
+            }
+        }
+    }
+    return allNodes;
 }
-
-MapState::~MapState()
-{
-	for(auto n : m_mapNodes)
-	{
-		delete n;
-	}
-	m_mapNodes.clear();
-}
-
-void MapState::Enter()
-{
-	MapGenerator gen;
-	m_mapNodes = gen.GenerateMap(7);
-	if (!m_mapNodes.empty())
-	{
-		m_currentNode = m_mapNodes[0];
-		m_currentNode->visited = true;
-	}
-	UpdateReachable();
-	AudioManager::Instance().LoadMapBGM("assets/audio/map_bgm.ogg");
-	AudioManager::Instance().PlayMapBGM();
-}
-
-void MapState::Exit()
-{
-	AudioManager::Instance().StopBGM();
-}
-
-void MapState::UpdateReachable()
-{
-	for(auto n : m_mapNodes)
-	{
-		n->reachable = false;
-	}
-	if(!m_currentNode) return;
-	for(auto child : m_currentNode->children)
-	{
-		child->reachable = true;
-	}
-}
-
-void MapState::Update(float dt)
-{
-
-}
-
-void MapState::Render()
-{
-	for(auto node : m_mapNodes)
-	{
-		for(auto child : node->children)
-		{
-		}
-	}
-
-	for(auto node : m_mapNodes)
-	{
-		switch(node->type)
-		{
-		case RoomType::Battle:
-			break;
-		case RoomType::Elite:
-			break;
-		case RoomType::Event:
-			break;
-		case RoomType::Shop:
-			break;
-		case RoomType::Rest:
-			break;
-		}
-	}
-}
-
-void MapState::OnMouseClick(float mx, float my)
-{
-	if (!m_currentNode)
-		return;
-	for(auto node : m_mapNodes)
-	{
-		if(!node->reachable) continue;
-		float dx = mx - node->posX;
-		float dy = my - node->posY;
-		float dist = sqrt(dx*dx + dy*dy);
-		if(dist < 25.f)
-		{
-			m_currentNode = node;
-			node->visited = true;
-			UpdateReachable();
-			break;
-		}
-	}
-}
-
