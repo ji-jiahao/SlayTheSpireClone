@@ -214,6 +214,11 @@ void Game::handleWindowEvent(const sf::Event& event)
             return;
         }
 
+        if (scene == SceneType::Battle && battleView.handleKeyPress(key->code, combat))
+        {
+            return;
+        }
+
         if (key->code == sf::Keyboard::Key::Escape)
         {
             window.close();
@@ -226,16 +231,6 @@ void Game::handleWindowEvent(const sf::Event& event)
             return;
         }
 
-        if (scene == SceneType::Battle && key->code == sf::Keyboard::Key::R &&
-            combat.getResult() != BattleResult::Active)
-        {
-            if (combat.getResult() == BattleResult::Defeat)
-            {
-                state.currentHealth = state.maxHealth;
-            }
-            showMap();
-            return;
-        }
     }
 
     if (const auto* mouseMoved = event.getIf<sf::Event::MouseMoved>())
@@ -253,16 +248,30 @@ void Game::handleWindowEvent(const sf::Event& event)
             shopView.handleMouseMove(window.mapPixelToCoords(mouseMoved->position),
                                      shopSystem, state, removingCardInShop);
         }
+        else if (scene == SceneType::Battle)
+        {
+            battleView.handleMouseMove(window.mapPixelToCoords(mouseMoved->position),
+                                       combat);
+        }
         else if (scene == SceneType::Event)
         {
+            const sf::Vector2f viewSize = window.getView().getSize();
             eventView.handleMouseMove(window.mapPixelToCoords(mouseMoved->position),
-                                      window.getSize(), eventSystem);
+                                      {static_cast<unsigned int>(viewSize.x),
+                                       static_cast<unsigned int>(viewSize.y)},
+                                      eventSystem);
         }
         return;
     }
 
     if (const auto* mouse = event.getIf<sf::Event::MouseButtonPressed>())
     {
+        if (scene == SceneType::Battle && mouse->button == sf::Mouse::Button::Right &&
+            battleView.handleKeyPress(sf::Keyboard::Key::Escape, combat))
+        {
+            return;
+        }
+
         if (mouse->button != sf::Mouse::Button::Left)
         {
             return;
@@ -288,12 +297,29 @@ void Game::handleWindowEvent(const sf::Event& event)
         }
         else if (scene == SceneType::Event)
         {
-            eventView.handleMouseClick(mousePosition, window.getSize(), eventSystem,
-                                       state);
+            const sf::Vector2f viewSize = window.getView().getSize();
+            eventView.handleMouseClick(mousePosition,
+                                       {static_cast<unsigned int>(viewSize.x),
+                                        static_cast<unsigned int>(viewSize.y)},
+                                       eventSystem, state);
         }
-        else if (scene == SceneType::Battle &&
-                 combat.getResult() == BattleResult::Active)
+        else if (scene == SceneType::Battle)
         {
+            if (combat.getResult() != BattleResult::Active)
+            {
+                if (battleView.isVisualLocked())
+                {
+                    return;
+                }
+
+                if (combat.getResult() == BattleResult::Defeat)
+                {
+                    state.currentHealth = state.maxHealth;
+                }
+                showMap();
+                return;
+            }
+
             battleView.handleMouseClick(mousePosition, combat);
             handleBattleResult();
         }
@@ -365,6 +391,12 @@ void Game::handleMapMouseClick(sf::Vector2f mousePosition)
 
 void Game::update(float deltaSeconds)
 {
+    if (scene == SceneType::Menu)
+    {
+        mainMenuView.update(deltaSeconds);
+        return;
+    }
+
     if (scene == SceneType::Event)
     {
         eventView.update(deltaSeconds);
@@ -385,6 +417,7 @@ void Game::update(float deltaSeconds)
 
     if (scene == SceneType::Battle)
     {
+        battleView.update(deltaSeconds);
         combat.update();
         handleBattleResult();
         return;
@@ -413,7 +446,10 @@ void Game::render()
         break;
     case SceneType::Battle:
         battleView.draw(window, combat);
-        drawResultOverlay();
+        if (!battleView.isVisualLocked())
+        {
+            drawResultOverlay();
+        }
         break;
     case SceneType::Rest:
         drawRestScene();
@@ -435,10 +471,6 @@ void Game::handleMenuAction(MainMenuView::Action action)
     {
     case MainMenuView::Action::Start:
         startNewRun();
-        break;
-    case MainMenuView::Action::Load:
-        startNewRun();
-        statusMessage = "读档功能暂未接入，已开始新游戏。";
         break;
     case MainMenuView::Action::None:
         break;
@@ -557,6 +589,7 @@ void Game::startBattle()
     handledResult = BattleResult::Active;
     relicHealing = 0;
     statusMessage.clear();
+    battleView.reset();
     combat.startBattle(state.currentHealth, state.seed, buildCombatDeck(),
                        EncounterDefinition{}, modifiers.block, modifiers.strength,
                        modifiers.energy, modifiers.drawCards, state.maxHealth);
@@ -825,8 +858,8 @@ void Game::drawResultOverlay()
     detailText.setPosition({430.0f, 325.0f});
     window.draw(detailText);
 
-    sf::Text restart = makeText("按 R 返回地图", 22, sf::Color(210, 210, 210));
-    restart.setPosition({545.0f, 390.0f});
+    sf::Text restart = makeText("点击任意位置返回地图", 22, sf::Color(210, 210, 210));
+    restart.setPosition({505.0f, 390.0f});
     window.draw(restart);
 }
 

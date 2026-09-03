@@ -3,12 +3,15 @@
 #include <SFML/Graphics.hpp>
 
 #include <string>
+#include <vector>
 
 namespace UiHelpers
 {
 sf::String toSfString(const std::string& text);
 sf::Text makeText(const sf::Font& font, const std::string& text, unsigned int size,
                   sf::Color color);
+std::vector<std::string> wrapText(const sf::Font& font, const std::string& text,
+                                  unsigned int characterSize, float maxWidth);
 void drawText(sf::RenderWindow& window, const sf::Font& font, const std::string& text,
               unsigned int size, sf::Vector2f position, sf::Color color);
 void drawCenteredText(sf::RenderWindow& window, const sf::Font& font,

@@ -79,7 +79,9 @@ target_link_libraries(room_system PUBLIC card_system relic_system)
 
 add_library(ui STATIC
     src/ui/CardView.cpp
+    src/ui/BattleCast.cpp
     src/ui/BattleView.cpp
+    src/ui/BattleHover.cpp
     src/ui/EventView.cpp
     src/ui/MainMenuView.cpp
     src/ui/RestView.cpp
@@ -130,6 +132,14 @@ if(BUILD_TESTING)
     add_executable(CombatTests tests/combat_tests.cpp)
     target_link_libraries(CombatTests PRIVATE combat_system)
     add_test(NAME CombatTests COMMAND CombatTests)
+
+    add_executable(BattleHoverTests tests/battle_hover_tests.cpp)
+    target_link_libraries(BattleHoverTests PRIVATE ui card_system)
+    add_test(NAME BattleHoverTests COMMAND BattleHoverTests)
+
+    add_executable(BattleCastTests tests/battle_cast_tests.cpp)
+    target_link_libraries(BattleCastTests PRIVATE ui card_system)
+    add_test(NAME BattleCastTests COMMAND BattleCastTests)
 
     add_executable(RelicTests tests/relic_tests.cpp)
     target_link_libraries(RelicTests PRIVATE relic_system)

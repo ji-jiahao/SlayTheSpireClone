@@ -2,17 +2,18 @@
 
 #include "ui/UiHelpers.hpp"
 
+#include <algorithm>
+#include <cstdint>
+
 namespace
 {
+constexpr float kFadeDurationSeconds = 3.0f;
+
 sf::FloatRect makeStartBounds()
 {
     return {{500.0f, 496.0f}, {280.0f, 64.0f}};
 }
 
-sf::FloatRect makeLoadBounds()
-{
-    return {{456.0f, 586.0f}, {368.0f, 64.0f}};
-}
 }
 
 void MainMenuView::setFont(const sf::Font& font)
@@ -25,15 +26,21 @@ void MainMenuView::setBackground(const sf::Texture& texture)
     background_ = &texture;
 }
 
+void MainMenuView::resetFade()
+{
+    fadeTimer_ = 0.0f;
+}
+
+void MainMenuView::update(float deltaSeconds)
+{
+    fadeTimer_ = std::min(kFadeDurationSeconds, fadeTimer_ + deltaSeconds);
+}
+
 void MainMenuView::handleMouseMove(sf::Vector2f position)
 {
     if (UiHelpers::contains(startButtonBounds(), position))
     {
         hoveredAction_ = Action::Start;
-    }
-    else if (UiHelpers::contains(loadButtonBounds(), position))
-    {
-        hoveredAction_ = Action::Load;
     }
     else
     {
@@ -46,11 +53,6 @@ MainMenuView::Action MainMenuView::handleMouseClick(sf::Vector2f position) const
     if (UiHelpers::contains(startButtonBounds(), position))
     {
         return Action::Start;
-    }
-
-    if (UiHelpers::contains(loadButtonBounds(), position))
-    {
-        return Action::Load;
     }
 
     return Action::None;
@@ -67,7 +69,6 @@ void MainMenuView::draw(sf::RenderWindow& window) const
 
         const sf::FloatRect hoveredBounds =
             hoveredAction_ == Action::Start ? startButtonBounds() :
-            hoveredAction_ == Action::Load ? loadButtonBounds() :
             sf::FloatRect();
         if (hoveredAction_ != Action::None)
         {
@@ -78,6 +79,11 @@ void MainMenuView::draw(sf::RenderWindow& window) const
             highlight.setOutlineThickness(3.0f);
             window.draw(highlight);
         }
+        const float progress = std::clamp(fadeTimer_ / kFadeDurationSeconds, 0.0f, 1.0f);
+        const auto alpha = static_cast<std::uint8_t>((1.0f - progress) * 220.0f);
+        sf::RectangleShape fadeOverlay({1280.0f, 720.0f});
+        fadeOverlay.setFillColor(sf::Color(0, 0, 0, alpha));
+        window.draw(fadeOverlay);
         return;
     }
 
@@ -99,16 +105,15 @@ void MainMenuView::draw(sf::RenderWindow& window) const
                                 sf::Color(238, 203, 125));
     UiHelpers::drawButton(window, *font_, startButtonBounds(), "START", true,
                           hoveredAction_ == Action::Start);
-    UiHelpers::drawButton(window, *font_, loadButtonBounds(), "LOAD GAME", true,
-                          hoveredAction_ == Action::Load);
+
+    const float progress = std::clamp(fadeTimer_ / kFadeDurationSeconds, 0.0f, 1.0f);
+    const auto alpha = static_cast<std::uint8_t>((1.0f - progress) * 220.0f);
+    sf::RectangleShape fadeOverlay({1280.0f, 720.0f});
+    fadeOverlay.setFillColor(sf::Color(0, 0, 0, alpha));
+    window.draw(fadeOverlay);
 }
 
 sf::FloatRect MainMenuView::startButtonBounds() const
 {
     return makeStartBounds();
-}
-
-sf::FloatRect MainMenuView::loadButtonBounds() const
-{
-    return makeLoadBounds();
 }

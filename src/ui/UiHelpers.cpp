@@ -1,5 +1,7 @@
 #include "ui/UiHelpers.hpp"
 
+#include <sstream>
+
 namespace UiHelpers
 {
 sf::String toSfString(const std::string& text)
@@ -13,6 +15,39 @@ sf::Text makeText(const sf::Font& font, const std::string& text, unsigned int si
     sf::Text result(font, toSfString(text), size);
     result.setFillColor(color);
     return result;
+}
+
+std::vector<std::string> wrapText(const sf::Font& font, const std::string& text,
+                                  unsigned int characterSize, float maxWidth)
+{
+    std::vector<std::string> lines;
+    std::istringstream words(text);
+    std::string word;
+    std::string line;
+
+    sf::Text measure(font, "", characterSize);
+
+    while (words >> word)
+    {
+        const std::string candidate = line.empty() ? word : line + " " + word;
+        measure.setString(toSfString(candidate));
+        if (!line.empty() && measure.getLocalBounds().size.x > maxWidth)
+        {
+            lines.push_back(line);
+            line = word;
+        }
+        else
+        {
+            line = candidate;
+        }
+    }
+
+    if (!line.empty())
+    {
+        lines.push_back(line);
+    }
+
+    return lines;
 }
 
 void drawText(sf::RenderWindow& window, const sf::Font& font, const std::string& text,

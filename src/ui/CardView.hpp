@@ -13,6 +13,8 @@ public:
     // 绘制文字需要字体；未设置字体时只绘制卡牌底色与边框。
     void setFont(const sf::Font& font);
     void setPosition(sf::Vector2f position);
+    void setScale(float scale);
+    void setRotation(float rotationDegrees);
     sf::FloatRect getBounds() const;
     void draw(sf::RenderTarget& target, const Card& card) const;
 
@@ -23,5 +25,7 @@ private:
     sf::Color colorForType(CardType type) const;
 
     sf::Vector2f position_;
+    float scale_;
+    float rotation_;
     const sf::Font* font_;
 };

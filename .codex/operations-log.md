@@ -258,5 +258,102 @@
 - 已移除地图节点下方的类型说明文字，地图只保留图标和连线。
 - 已将事件页的按钮布局和命中检测改为使用真实窗口尺寸，修正全屏错位问题。
 - 已为篝火场景接入外部背景图 `assets/images/rest/campfire_background.jpg`。
+
+## 编码前检查 - 战斗按钮式目标选择与卡面资源
+
+时间：2026-09-03 08:10:00 +08:00
+
+□ 已查阅上下文摘要文件：`.codex/context-summary-battle-target-button.md`
+□ 将使用以下可复用组件：
+
+- `MainMenuView`: `src/ui/MainMenuView.cpp` - 复用开始界面按钮热区和悬停高亮风格
+- `BattleView`: `src/ui/BattleView.cpp` - 复用战斗页手牌布局、输入分发和悬停状态
+- `UiHelpers`: `src/ui/UiHelpers.cpp` - 复用按钮绘制、居中文字和文本换行
+- `CardView`: `src/ui/CardView.cpp` - 复用单卡绘制入口，接入新的占位美术资源
+- `BattleHover`: `src/ui/BattleHover.cpp` - 复用手牌布局和重叠优先命中逻辑
+- `CombatSystem`: `src/combat/CombatSystem.cpp` - 继续只负责规则结算，不混入动画状态
+
+□ 将遵循命名约定：类型大驼峰，函数与变量小驼峰，常量 `k` 前缀。
+□ 将遵循代码风格：C++17、`.hpp/.cpp` 分离、SFML 3.0.1、中文界面文案。
+□ 确认不重复造轮子，证明：已检查 `src/ui/`、`src/card/`、`src/combat/`、`tests/`，本次只是在既有战斗视图和按钮绘制之上插入目标选择状态与卡面资源缓存，没有另起一套战斗框架。
+
+## 编码后声明 - 战斗按钮式目标选择与卡面资源
+
+时间：2026-09-03 16:53:10 +08:00
+
+### 1. 复用了以下既有组件
+
+- `MainMenuView`: 复用 `START` 按钮的热区判断和高亮风格，做成战斗内的确认 / 取消按钮。
+- `BattleView`: 继续承载战斗页输入分发、悬停反馈和绘制，只是在其中加了目标选择与出牌动画状态机。
+- `UiHelpers`: 复用按钮绘制、居中文本和换行文本。
+- `CardView`: 复用单卡绘制入口，并把卡面替换成稀有度占位图。
+- `BattleHover`: 复用手牌布局和悬停命中逻辑。
+- `CombatSystem`: 保持规则结算纯净，没有把动画逻辑塞进战斗核心。
+
+### 2. 遵循了以下项目约定
+
+- 命名约定：新增 `BattleCast`、`HandState`、`PlayAnim`、`HitBurst` 均使用项目既有大驼峰命名。
+- 代码风格：新增 `.cpp` 已纳入 `CMakeLists.txt`，继续使用 SFML 3.0.1 和中文 UI 文案。
+- 文件组织：战斗交互留在 `src/ui/`，纯逻辑辅助放在 `src/ui/BattleCast.*`，测试放在 `tests/`。
+
+### 3. 对比了以下相似实现
+
+- `src/ui/MainMenuView.cpp`: 我的目标选择按钮沿用了按钮热区与高亮方式，而不是另起一套实体点击。
+- `src/ui/BattleView.cpp`: 仍然由视图层管理手牌 hover，只是把战斗点击拆成了“选牌 - 选目标 - 播放动画”三段。
+- `src/ui/CardView.cpp`: 我把卡牌视觉从纯几何卡换成了稀有度占位资源，后续替换美术时只需要改资源文件。
+
+### 4. 未重复造轮子的证明
+
+- 检查了 `src/ui/`、`src/card/`、`src/combat/` 和 `tests/`，未发现已有目标选择或出牌动画模块。
+- 没有新增第二套路由或规则系统，只在既有战斗界面上增加状态机和动画层。
+
+## 验证记录
+
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --preset windows-x64`
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --build --preset debug`
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe --test-dir out/build/windows-x64 -C Debug --output-on-failure`
+- 结果：`CardTests`、`CombatTests`、`BattleHoverTests`、`BattleCastTests`、`RelicTests`、`RoomTests`、`MapTests` 全部通过。
+- 已执行：启动 `out/build/windows-x64/Debug/SlayTheSpire.exe` 3 秒，进程保持运行后结束测试进程。
+- 资源检查：`assets/images/cards/starter_placeholder.png`、`uncommon_placeholder.png`、`rare_placeholder.png` 已复制到项目资源目录并纳入构建复制流程。
 - 已将启动界面、地图、篝火、普通战斗、商人和 Boss 关卡接入对应背景音乐。
 - 已在地图生成测试中补充“相邻两个房间不允许同时为商店”的约束。
+
+## 编码前检查 - 指针悬浮效果
+
+时间：2026-09-03 07:57:11 +08:00
+
+□ 已查阅上下文摘要文件：`.codex/context-summary-card-hover.md`
+□ 将使用以下可复用组件：
+
+- `Game`: `src/app/Game.cpp` - 负责把鼠标移动和帧更新分发给战斗界面。
+- `BattleView`: `src/ui/BattleView.cpp` - 负责战斗页绘制、出牌点击和卡牌音效。
+- `CardView`: `src/ui/CardView.cpp` - 负责单张卡牌基础绘制。
+- `UiHelpers`: `src/ui/UiHelpers.cpp` - 负责文本生成、文本换行和按钮样式。
+- `BattleHover`: `src/ui/BattleHover.cpp` - 负责手牌布局、悬停命中、提示框位置和缓动。
+
+□ 将遵循命名约定：类型大驼峰，函数与变量小驼峰，常量使用 `k` 前缀。
+□ 将遵循代码风格：C++17、`.hpp/.cpp` 分离、SFML 3.0.1、中文界面文案。
+□ 确认不重复造轮子，证明：已检查 `src/ui/` 下的 `BattleView`、`ShopView`、`EventView`、`MainMenuView`、`RestView`，发现现有项目已经有悬停高亮、按钮命中和资源缓存模式，因此只补一层战斗卡牌悬停状态机与纯数学辅助函数，没有另起第二套 UI 框架。
+□ 工具限制记录：本会话没有可直接调用的 sequential-thinking、shrimp-task-manager、desktop-commander、context7 和 github.search_code 入口，因此使用仓库内代码检索、本地编辑和官方 SFML 文档作为替代依据。
+
+## 本轮复核 - 战斗按钮式目标选择与卡面资源
+
+时间：2026-09-03 17:05:00 +08:00
+
+- 已使用仓库记录的 CMake 绝对路径重新执行配置、构建和测试，避免本地 PATH 缺失干扰判断。
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --preset windows-x64`
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --build --preset debug`
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe --test-dir out/build/windows-x64 -C Debug --output-on-failure`
+- 已执行：启动 `out/build/windows-x64/Debug/SlayTheSpire.exe` 3 秒，进程保持运行后结束测试进程。
+- 本轮确认：按钮式目标选择、卡面占位资源、飞行动画、命中闪光和测试入口都保持正常。
+
+## 本轮修正 - 敌人悬停确认
+
+时间：2026-09-03 17:20:00 +08:00
+
+- 已移除战斗中的目标选择按钮和确认面板。
+- 已改为在敌人或自身目标区域上悬停时显示当前高亮框，左键直接确认出牌，右键或 Esc 取消。
+- 已保留选牌后的卡牌抬起状态、出牌飞行动画和命中闪光，不影响原有战斗结算路径。
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --build --preset debug`
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe --test-dir out/build/windows-x64 -C Debug --output-on-failure`
+- 已执行：启动 `out/build/windows-x64/Debug/SlayTheSpire.exe` 3 秒，进程保持运行后结束测试进程。

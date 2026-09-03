@@ -309,9 +309,9 @@ void EventView::clearReturnToMapRequest()
 void EventView::draw(sf::RenderWindow& window, const EventSystem& eventSystem,
                      const GameState& gameState) const
 {
-    const sf::Vector2u size = window.getSize();
-    const float width = static_cast<float>(size.x);
-    const float height = static_cast<float>(size.y);
+    const sf::Vector2f viewSize = window.getView().getSize();
+    const float width = viewSize.x;
+    const float height = viewSize.y;
 
     if (hasBackgroundTexture_)
     {
@@ -427,7 +427,9 @@ void EventView::draw(sf::RenderWindow& window, const EventSystem& eventSystem,
         window.draw(dialogue);
     }
 
-    const std::vector<OptionButton> buttons = layoutButtons(eventSystem, size);
+    const std::vector<OptionButton> buttons = layoutButtons(
+        eventSystem,
+        {static_cast<unsigned int>(width), static_cast<unsigned int>(height)});
     for (const OptionButton& button : buttons)
     {
         const bool hovered = hoveredOptionIndex_ == static_cast<int>(button.optionIndex);
