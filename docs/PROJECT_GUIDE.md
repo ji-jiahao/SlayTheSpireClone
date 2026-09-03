@@ -2,6 +2,8 @@
 
 本文件是项目唯一的团队协作入口。目标是用 C++17、SFML 3.0.1 和 CMake，完成《杀戮尖塔》第一层、铁甲战士的简化复刻。
 
+> 重要：本文件描述的是团队目标和协作流程，不代表功能已经实现。当前源码审计见 [实现现状与差距.md](实现现状与差距.md)；当前 `main` 的运行闭环只有主菜单、6 层地图、单敌人战斗、事件、篝火和商店。
+
 ## 1. 开始开发
 
 环境：Visual Studio 2022（使用 C++ 的桌面开发）、Git、可访问 GitHub 的网络。队员不需要手动安装 SFML，CMake 会自动下载固定版本。
@@ -41,7 +43,7 @@ main.cpp -> A 的 Game -> Scene -> card / combat / map / event / ui
 - A 的 `CardDatabase` 只描述卡牌；B 的 `CombatSystem` 执行卡牌效果。
 - B 保存并修改战斗中的玩家、敌人、格挡、能量、牌堆和攻击意图。
 - C 只负责显示和把鼠标位置转换为索引，不直接修改血量或金币。
-- D 生成地图上的 `Unknown`（问号）节点，但不决定事件文本和效果。
+- D 当前生成 `Event` 节点；`Unknown`（问号）节点类型尚未在 `src/map/MapNode.hpp` 中定义。
 - E 决定问号事件、选项、条件和结果，不负责地图连线和 SFML 绘制。
 - A 负责场景切换；事件变成战斗时交给 B。
 
@@ -61,14 +63,14 @@ struct Card {
 
 ```cpp
 // B: src/combat/CombatSystem.hpp
-void startBattle();
-void playCard(int handIndex); // 只接收手牌索引
+void startBattle(int currentHealth = 80, std::uint32_t seed = 0);
+bool playCard(int handIndex); // 当前为单敌人战斗，只接收手牌索引
 void endPlayerTurn();
 ```
 
 ```cpp
 // D: src/map/MapNode.hpp
-enum class MapNodeType { Battle, Elite, Rest, Shop, Treasure, Unknown, Boss };
+enum class MapNodeType { Battle, Elite, Rest, Shop, Event, Boss };
 struct MapNode { int id, row, column; MapNodeType type; std::vector<int> nextNodeIds; };
 ```
 
@@ -115,4 +117,4 @@ git branch --show-current
 - 公共接口变更已通知相关成员。
 - 至少一名其他成员检查过代码。
 
-每次合并后验证：新游戏 -> 一场战斗 -> 打出攻击和防御牌 -> 结束回合 -> 获得奖励 -> 返回地图 -> 保存并读档。
+每次合并后按当前能力验证：新游戏 -> 地图 -> 一场战斗或事件 -> 篝火/商店 -> 返回地图。战斗奖励和保存/读档尚未接入，不能把它们写成已通过的验收项。
