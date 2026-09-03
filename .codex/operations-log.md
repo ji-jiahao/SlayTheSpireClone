@@ -357,3 +357,14 @@
 - 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --build --preset debug`
 - 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe --test-dir out/build/windows-x64 -C Debug --output-on-failure`
 - 已执行：启动 `out/build/windows-x64/Debug/SlayTheSpire.exe` 3 秒，进程保持运行后结束测试进程。
+
+## 本轮修正 - 地图连线减交叉
+
+时间：2026-09-03 17:35:00 +08:00
+
+- 仅落实 `origin/feature/map` 中“减少连线交叉”的布局思路，没有引入额外地图场景或状态模块。
+- 已在 `src/map/MapGenerator.cpp` 中加入按父节点平均列位置排序的列号重排，尽量让下一层节点靠近其父节点群的中位区域。
+- 该改动只影响地图节点 `column` 的生成顺序，不改动 `Game::layoutMapNodes()` 的点击与绘制接口。
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe --build --preset debug`
+- 已执行：`D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe --test-dir out/build/windows-x64 -C Debug --output-on-failure`
+- 本轮确认：`MapTests` 继续通过，地图层规则、商店限制和连线约束未被破坏。

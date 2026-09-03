@@ -1,6 +1,7 @@
 #include "MapGenerator.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <random>
 #include <unordered_map>
 
@@ -36,6 +37,85 @@ std::vector<int> findRowIndexes(const std::vector<MapNode>& nodeList, int row)
     }
 
     return indexes;
+}
+
+template <typename RandomEngine>
+void assignBarycentricColumns(std::vector<MapNode>& nodeList, int rowCount,
+                              RandomEngine& randomEngine)
+{
+    if (nodeList.empty() || rowCount <= 0)
+    {
+        return;
+    }
+
+    const std::vector<int> firstRowIndexes = findRowIndexes(nodeList, 0);
+    for (int column = 0; column < static_cast<int>(firstRowIndexes.size()); ++column)
+    {
+        nodeList[firstRowIndexes[static_cast<std::size_t>(column)]].column = column;
+    }
+
+    std::vector<int> previousRowIndexes = firstRowIndexes;
+    for (int row = 1; row < rowCount; ++row)
+    {
+        std::vector<int> currentRowIndexes = findRowIndexes(nodeList, row);
+        if (currentRowIndexes.empty())
+        {
+            previousRowIndexes.clear();
+            continue;
+        }
+
+        std::unordered_map<int, float> parentAverageByNodeId;
+        for (int nodeIndex : currentRowIndexes)
+        {
+            const MapNode& currentNode = nodeList[static_cast<std::size_t>(nodeIndex)];
+            float sum = 0.0f;
+            int parentCount = 0;
+
+            for (int parentIndex : previousRowIndexes)
+            {
+                const MapNode& parentNode = nodeList[static_cast<std::size_t>(parentIndex)];
+                if (std::find(parentNode.nextNodeIds.begin(), parentNode.nextNodeIds.end(),
+                              currentNode.id) == parentNode.nextNodeIds.end())
+                {
+                    continue;
+                }
+
+                sum += static_cast<float>(parentNode.column);
+                ++parentCount;
+            }
+
+            const float value = parentCount > 0
+                                    ? sum / static_cast<float>(parentCount)
+                                    : static_cast<float>(currentNode.column);
+            parentAverageByNodeId.emplace(currentNode.id, value);
+        }
+
+        std::shuffle(currentRowIndexes.begin(), currentRowIndexes.end(), randomEngine);
+        std::stable_sort(currentRowIndexes.begin(), currentRowIndexes.end(),
+                         [&nodeList, &parentAverageByNodeId](int leftIndex, int rightIndex)
+                         {
+                             const MapNode& leftNode =
+                                 nodeList[static_cast<std::size_t>(leftIndex)];
+                             const MapNode& rightNode =
+                                 nodeList[static_cast<std::size_t>(rightIndex)];
+                             const float leftScore = parentAverageByNodeId.at(leftNode.id);
+                             const float rightScore = parentAverageByNodeId.at(rightNode.id);
+                             if (leftScore == rightScore)
+                             {
+                                 return leftNode.id < rightNode.id;
+                             }
+
+                             return leftScore < rightScore;
+                         });
+
+        for (int column = 0; column < static_cast<int>(currentRowIndexes.size()); ++column)
+        {
+            nodeList[static_cast<std::size_t>(
+                currentRowIndexes[static_cast<std::size_t>(column)])].column = column;
+        }
+
+        previousRowIndexes = currentRowIndexes;
+    }
 }
 
 bool addConnection(MapNode& node, int targetId, int& tripleConnectionNodeCount)
@@ -437,6 +517,7 @@ std::vector<MapNode> MapGenerator::generateMap(int rowCount)
     connectRows(nodeList, rowCount, randomEngine);
     eliminateAdjacentShops(nodeList);
     rebalanceBattleEventRatio(nodeList, randomEngine);
+    assignBarycentricColumns(nodeList, rowCount, randomEngine);
 
     return nodeList;
 }
