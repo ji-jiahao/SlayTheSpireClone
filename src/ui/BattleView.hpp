@@ -4,6 +4,7 @@
 #include "combat/CombatSystem.hpp"
 #include "ui/BattleCast.hpp"
 #include "ui/BattleHover.hpp"
+#include "ui/BattleHud.hpp"
 
 #include <SFML/Audio.hpp>
 #include <SFML/Graphics.hpp>
@@ -158,4 +159,5 @@ private:
     std::size_t enemyAnimationFrame_ = 0;
     float playerAnimationTimer_ = 0.0f;
     float enemyAnimationTimer_ = 0.0f;
+    BattleHud hud_;
 };

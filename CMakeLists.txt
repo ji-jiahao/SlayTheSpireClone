@@ -81,6 +81,8 @@ add_library(ui STATIC
     src/ui/CardView.cpp
     src/ui/BattleCast.cpp
     src/ui/BattleView.cpp
+    src/ui/BattleHud.cpp
+    src/ui/BattleIcons.cpp
     src/ui/BattleHover.cpp
     src/ui/EventView.cpp
     src/ui/MainMenuView.cpp
