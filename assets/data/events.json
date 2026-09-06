@@ -3,7 +3,7 @@
     "id": "university_choice",
     "title": "哪个是更好的大学？",
     "description": "哪个是更好的大学？",
-    "background": "assets/images/event/dungeon_background.png",
+    "background": "assets/images/event/torch_stone_event_background.png",
     "act": 1,
     "weight": 8,
     "states": [
@@ -12,7 +12,7 @@
         "text": "",
         "left_image": "assets/images/event/southeast_university_logo.png",
         "right_image": "assets/images/event/nanjing_university_logo.png",
-        "sound": "assets/sounds/laoda_theme.ogg",
+        "sound": "assets/sounds/university_event.mp3",
         "overlay_alpha": 150
       },
       {
@@ -23,7 +23,7 @@
       },
       {
         "text": "车大lose，你不是一个合格的车兵，丢弃所有金币",
-        "sound": "assets/sounds/detective_theme.mp3",
+        "sound": "assets/sounds/laoda_theme.ogg",
         "overlay_alpha": 150,
         "close_on_click": 1
       }
@@ -62,7 +62,7 @@
     "id": "sacred_nailong",
     "title": "神圣的不明生物",
     "description": "………………",
-    "background": "assets/images/event/dungeon_background.png",
+    "background": "assets/images/event/torch_stone_event_background.png",
     "act": 1,
     "weight": 10,
     "states": [

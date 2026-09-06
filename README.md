@@ -10,19 +10,21 @@
 
 ```text
 主菜单（开始界面背景/音乐）
-→ 6 层随机地图
+→ 8 层地图（每条路线 4 场普通战斗、至少 1 个商店，最后为 Boss）
 → 普通战斗、事件、篝火或商店
 → 返回地图
 ```
 
 当前真实行为：
 
-- 战斗只有单个固定邪教徒（40 HP、6 点攻击意图），没有战后奖励或三选一卡牌。
+- 战斗当前仍是单敌人，但已支持通过 `EncounterDefinition.enemyId` 选择邪教徒、颚虫、酸液史莱姆、真菌兽、乐加维林和史莱姆老大等敌人原型；胜利后会获得 50 金币，并从三张候选卡牌中选择一张加入牌组。
+- 地图战斗入口会根据当前节点、地图层数和运行种子生成可复现的敌人遭遇：前两层从邪教徒、颚虫、酸液史莱姆中选择，后续普通战斗可加入真菌兽和乐加维林；精英节点固定为乐加维林，Boss 节点固定为贝利亚。
 - 铁甲战士初始状态为 80 HP、3 能量、5 张打击/4 张防御/1 张痛击；战斗胜利触发燃烧之血回血。
-- `CardDatabase` 中有 74 张卡牌定义和升级数据，但运行时牌组默认只使用初始牌组；`assets/data/cards.json` 尚未被加载。
+- `CardDatabase` 中有 73 张可获得卡牌定义和升级数据，但运行时牌组默认只使用初始牌组；`assets/data/cards.json` 尚未被加载。
 - 地图节点实际只有战斗、事件、篝火、商店和 Boss；没有宝箱场景，地图生成器当前不会生成精英节点。
-- 篝火支持一次休息（回复最大生命值的 30%），商店支持购买卡牌、购买遗物和删牌。
-- 背景音乐、菜单/地图/篝火/商店资源和事件图片/音频已接入；战斗场景仍使用几何占位图，卡牌和敌人图片目录为空。
+- 篝火支持一次休息（回复最大生命值的 30%），商店支持购买卡牌和删牌，不再出售遗物。
+- 背景音乐、菜单/地图/篝火/商店资源和事件图片/音频已接入；进入贝利亚 Boss 战时会先从地图短暂淡入地球背景+贝利亚静止立绘的出场画面，出场音效结束或玩家点击/按键后进入可操作战斗；战斗 Boss 贝利亚使用静止立绘，其他敌人使用预生成 PNG 帧动画，卡牌使用第三版 `pixel_v2` 卡面资源。
+- 击败贝利亚后不再进入普通战斗奖励，而是播放黑屏淡出、感谢游玩、制作人名单和最终致辞结算流程，结束后自动返回主菜单；结算期间右下角显示 `可按ESC退出`。
 - 主菜单的“读档”按钮目前会重新开始新游戏，不是真正读档。
 
 功能完成度和接口/资源缺口见 [docs/实现现状与差距.md](docs/实现现状与差距.md)。
@@ -48,7 +50,9 @@
 - 只能沿着 `nextNodeIds` 指向的路径前进。
 - 初始从最底层开始。
 - 节点类型仍然沿用 `Battle`、`Rest`、`Shop`、`Event`、`Boss`。
-- 地图显示继续由 `Game::drawMapScene()` 负责。
+- 地图显示继续由 `Game::drawMapScene()` 负责，地图高度超过窗口时通过鼠标滚轮上下滚动查看。
+- 当前开局生成 8 层地图：第 1、2 层保留战斗入口，第 3 层固定为商店，第 4、5 层随机选择一层作为事件，其余四层为普通战斗，倒数第二层固定休息，顶层为 Boss；因此每条路线至少经过一个商店，并经过 4 个普通战斗节点，不计 Boss。
+- 地图连接由 `Game::drawMapScene()` 绘制为弯曲虚线；节点点击使用 `mapScrollOffset_` 进行同一坐标换算，滚动后视觉位置与点击区域保持一致。
 
 ### 战斗
 
@@ -70,6 +74,7 @@
 - `CombatSystem::getHandCards()`
 - `CombatSystem::getPlayer()`
 - `CombatSystem::getEnemy()`
+- `CombatSystem::getEnemyIntentDamage()`
 - `CombatSystem::getResult()`
 
 最近的战斗交互改动是：
@@ -80,6 +85,11 @@
 - 左键直接确认出牌。
 - 右键或 `Esc` 取消本次选择。
 - 出牌后播放飞行弧线、命中闪光和碎片效果。
+- 结束回合按钮沿用开始界面的悬停高亮方式，点击时播放 `assets/sounds/end_turn.mp3`。
+- 普通战斗会在 `assets/sounds/battle_normal_2.mp3` 和 `assets/sounds/battle_normal_3.mp3` 之间轮流播放；贝利亚 Boss 首次被击倒前播放 `assets/sounds/final_battle.mp3`，相信光复活后继续播放 `assets/sounds/heavy_is_the_crown.mp3`。
+- 进入贝利亚 Boss 战时先从地图画面淡入 `assets/images/background/belial_intro_earth.jpg` 和 `assets/images/enemies/belial.png`，同时播放 `assets/sounds/belial_intro.mp3` 与 Boss 战配乐；音效结束或玩家输入后才进入战斗。
+- 贝利亚 Boss 胜利后进入制作名单结算流程，淡黑时开始播放 `assets/sounds/ending_credits.mp3`，流程结束后自动重置运行状态并返回主菜单。
+- 战斗胜利后显示卡牌奖励窗口，可点击三张候选卡牌中的一张加入牌组，也可以点击“跳过”或按 `Esc` 返回地图；金币奖励只在本场胜利结算一次。
 
 战斗中卡牌布局和命中区域由这几个辅助接口支撑：
 
@@ -100,13 +110,22 @@
 - `Enemy::getCurrentHealth()`
 - `Enemy::getMaxHealth()`
 - `Enemy::getIntentDamage()`
+- `Enemy::getIntent()`
+- `Enemy::getBlock()`
+- `Enemy::getArchetype()`
+- `Enemy::getPowerDescription()`
 - `Enemy::getStrength()`
 - `Enemy::getWeak()`
 - `Enemy::getVulnerable()`
 - `Enemy::isDead()`
 
-战斗页展示敌人信息时，直接从 `CombatSystem::getEnemy()` 读取。
-敌人的血条、意图、状态文字都还是由 `Game::drawEnemyPanel()` 和 `BattleView` 里的绘制逻辑承担。
+战斗页展示敌人信息时，直接从 `CombatSystem::getEnemy()` 和
+`CombatSystem::getEnemyIntentDamage()` 读取。敌人的血条、意图名称、意图伤害、
+格挡和状态文字由 `BattleView::drawEnemyPanel()` 绘制。
+
+`EnemyIntent` 由规则层维护，`CombatSystem::endPlayerTurn()` 负责依次结算当前意图、
+应用状态效果并推进下一回合意图。特殊行为包括仪式、沉睡唤醒、金属化、分裂、
+死亡后的易伤以及向弃牌堆加入黏液。
 
 ### 卡牌 UI
 
@@ -122,10 +141,11 @@
 
 最近卡牌 UI 的变化：
 
-- 优先按稀有度加载占位美术资源。
-- `Starter` / `Common` 使用同一张占位图。
-- `Uncommon`、`Rare` 各自有独立占位图。
-- 如果资源加载失败，回退到原来的几何卡牌绘制。
+- 优先按 `Card.id` 加载独立卡面资源。
+- 资源路径格式为 `assets/images/cards/pixel_v2/<Card.id>.png`。
+- 当前 73 个可获得卡牌 ID 均已有对应卡面。
+- 重复中文名的卡牌按 ID 区分，不会因为名称相同而串图。
+- 如果独立卡面或占位资源加载失败，回退到原来的几何卡牌绘制。
 
 战斗页会通过 `CardView` 生成：
 
@@ -134,16 +154,60 @@
 - 选中待确认卡
 - 出牌飞行中的卡牌精灵
 
+商店卡牌也复用同一个 `CardView`，鼠标悬停未售卡牌时显示与战斗页一致的名称、类型、费用和描述提示框。商店使用 `assets/images/background/shop_background.jpg` 作为背景，不再出售遗物，卡牌商品扩展为 8 张并放大展示；卡牌价格按普通/非凡/稀有为 30/50/70，删牌费用为 50。
+
+### 卡牌规则一致性
+
+卡牌规则由 `CardEffectType + CardEffect::parameter` 描述，并统一从
+`CombatSystem::playCard()` 进入 `resolveEffect()` 结算。当前已补齐：
+
+- `Card::upgrade()`：同步升级后的名称、费用、描述、伤害、格挡和效果；`灼热打击`支持重复升级。
+- `Deck::upgradeHandCard()` / `Deck::upgradeAllHandCards()`：供`武装`升级手牌使用。
+- `CardEffectType::Heal`：实际恢复生命，且不会超过最大生命。
+- `虚无`：未打出的牌在回合结束时消耗，打出后正常进入弃牌堆。
+- `头槌`和`发掘`：取回牌时跳过当前正在结算的自身，避免把自己错误取回。
+- 多段伤害、X费用和敌人死亡后的卡牌后续副作用：均与卡牌描述保持一致；`愤怒` 因复制牌路径与当前牌库表现冲突，已从可获得卡池移除。
+
+卡牌需要选择具体手牌但当前没有独立选牌窗口时，规则层会按牌堆顺序选择第一张合法牌；
+后续增加选牌 UI 时，只需替换对应选择入口，不需要改动基础效果结算。
+
+### 战斗奖励
+
+战斗结算由 `Game` 顶层场景编排，主要接口如下：
+
+- `Game::handleBattleResult()`：监听战斗状态变化，结算燃烧之血、50 金币和奖励候选。
+- `Game::prepareBattleReward()`：从 `CardDatabase::createIroncladCardPool()` 使用新的随机种子取三张不同卡牌。
+- `Game::handleBattleRewardClick(sf::Vector2f)`：处理选牌和跳过，选中的卡牌通过 `GameState::addCard()` 加入牌组。
+- `Game::drawBattleRewardOverlay()`：绘制胜利奖励窗口、卡牌和跳过按钮。
+
+胜利奖励窗口显示在战斗视觉动画结束后；失败战斗仍沿用原有结果覆盖层和返回地图流程。
+
 ### 资源接口
 
 新增资源路径如下：
 
+- `assets/images/cards/pixel_v2/<card_id>.png`：第三版按卡牌 ID 一一对应的正式卡面；第三版原始文件名为编号拼音，已按 `CardDatabase` 的可获得卡牌定义顺序转换为项目 ID 文件名
+- `assets/images/enemies/belial.png`：贝利亚 Boss 静止立绘
+- `assets/images/background/belial_intro_earth.jpg`：贝利亚 Boss 出场画面背景
+- `assets/images/enemies/<enemy_id>/frame_000.png`：普通敌人逐帧 PNG；原始 GIF 已在资源接入时转换并去除洋红色背景
+- `assets/sounds/belial_intro.mp3`：贝利亚 Boss 出场画面播放一次的开场语音
+- `assets/sounds/battle_normal_2.mp3`、`assets/sounds/battle_normal_3.mp3`：普通战斗轮换播放的两首战斗曲
+- `assets/sounds/final_battle.mp3`：贝利亚 Boss 第一次死亡前的战斗曲
+- `assets/sounds/heavy_is_the_crown.mp3`：贝利亚相信光复活后的战斗曲
+- `assets/sounds/ending_credits.mp3`：击败贝利亚后的结算和制作名单音乐
+- `assets/sounds/university_event.mp3`：大学事件进入初始状态时播放的背景曲
+- `assets/sounds/laoda_theme.ogg`：失败后触发的音乐
 - `assets/images/cards/starter_placeholder.png`
 - `assets/images/cards/uncommon_placeholder.png`
 - `assets/images/cards/rare_placeholder.png`
 - `assets/sounds/card_select.mp3`
 - `assets/sounds/card_attack.mp3`
 - `assets/sounds/card_defense.mp3`
+- `assets/sounds/end_turn.mp3`
+- `assets/images/background/battle_background.png`
+- `assets/images/background/map_background.png`
+- `assets/images/background/shop_background.jpg`
+- `assets/images/event/torch_stone_event_background.png`
 
 ### 相关文件
 

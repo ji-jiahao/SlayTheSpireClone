@@ -57,7 +57,7 @@ void testCardDefinitions()
 void testIroncladPool()
 {
     const std::vector<Card> cards = CardDatabase::createIroncladCardPool();
-    require(cards.size() == 74, "Ironclad pool must contain 74 cards");
+    require(cards.size() == 73, "Ironclad pool must contain 73 cards");
     std::unordered_set<std::string> ids;
     for (const Card& card : cards)
     {
@@ -70,6 +70,10 @@ void testIroncladPool()
             "Whirlwind must use X cost");
     require(CardDatabase::createById("bash").upgradedEffects.size() == 2,
             "Bash upgrade must preserve both effects");
+    require(CardDatabase::createById("cleave").damage == 8,
+            "Multi-damage cards must expose their damage value to the card UI");
+    require(CardDatabase::createById("ghostly_armor").id == "ghostly_armor",
+            "Ghostly Armor must be creatable by id");
 }
 
 void testStarterDeck()
@@ -130,6 +134,33 @@ void testDeterministicShuffle()
                 "Same seed must produce the same card order");
     }
 }
+
+void testCardUpgrades()
+{
+    Card strike = CardDatabase::createStrike();
+    require(strike.upgrade(), "Strike must be upgradeable");
+    require(strike.upgraded && strike.name == "打击+" &&
+                strike.damage == 9 && strike.effects[0].value == 9 &&
+                strike.description.find("9") != std::string::npos,
+            "Strike upgrade must update name and damage");
+    require(!strike.upgrade(), "A normal card must not upgrade twice");
+
+    Card defend = CardDatabase::createDefend();
+    require(defend.upgrade() && defend.block == 8 &&
+                defend.description.find("8") != std::string::npos,
+            "Defend upgrade must update block and description");
+
+    Card searingBlow = CardDatabase::createById("searing_blow");
+    require(searingBlow.upgrade(), "Searing Blow must be upgradeable");
+    require(searingBlow.effects[0].value == 16 &&
+                searingBlow.name == "灼热打击+" &&
+                searingBlow.description.find("16") != std::string::npos,
+            "First Searing Blow upgrade must add 4 damage");
+    require(searingBlow.upgrade(), "Searing Blow must support repeatable upgrades");
+    require(searingBlow.effects[0].value == 20 &&
+                searingBlow.description.find("20") != std::string::npos,
+            "Second Searing Blow upgrade must add another 4 damage");
+}
 }
 
 int main()
@@ -142,6 +173,7 @@ int main()
         testDrawAndDiscard();
         testReshuffle();
         testDeterministicShuffle();
+        testCardUpgrades();
         std::cout << "Card tests passed.\n";
         return 0;
     }

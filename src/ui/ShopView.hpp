@@ -6,6 +6,7 @@
 #include <SFML/Graphics.hpp>
 
 #include <cstddef>
+#include <optional>
 #include <random>
 #include <string>
 #include <vector>
@@ -14,7 +15,6 @@ enum class ShopActionType
 {
     None,
     BuyCard,
-    BuyRelic,
     OpenRemove,
     RemoveCard,
     CancelRemove,
@@ -31,6 +31,7 @@ class ShopView
 {
 public:
     void setFont(const sf::Font& font);
+    void setBackground(const sf::Texture* texture);
     bool loadMerchantAnimation(const std::string& framesDirectory);
     void resetDialogue(unsigned int seed);
     void update(float deltaSeconds);
@@ -44,7 +45,6 @@ public:
 
 private:
     sf::FloatRect cardBounds(std::size_t index) const;
-    sf::FloatRect relicBounds(std::size_t index) const;
     sf::FloatRect removeButtonBounds() const;
     sf::FloatRect leaveButtonBounds() const;
     sf::FloatRect cancelRemoveButtonBounds() const;
@@ -53,8 +53,13 @@ private:
     float dialogueAlpha() const;
     void drawMerchant(sf::RenderWindow& window) const;
     void drawDialogueBubble(sf::RenderWindow& window) const;
+    void updateCardTooltip(const Card& card, const sf::FloatRect& bounds);
+    void clearCardTooltip();
+    void drawCardTooltip(sf::RenderWindow& window) const;
+    std::string cardTypeLabel(CardType type) const;
 
     const sf::Font* font_ = nullptr;
+    const sf::Texture* background_ = nullptr;
     std::vector<sf::Texture> merchantFrames_;
     bool merchantLoaded_ = false;
     std::size_t merchantFrameIndex_ = 0;
@@ -64,4 +69,14 @@ private:
     std::string dialogueText_ = "不来点什么？";
     float dialogueTimer_ = 0.0f;
     float dialoguePauseTimer_ = 0.0f;
+    sf::RectangleShape cardTooltipBackground_;
+    sf::RectangleShape cardTooltipOutline_;
+    sf::CircleShape cardTooltipCostCircle_;
+    std::optional<sf::Text> cardTooltipNameText_;
+    std::optional<sf::Text> cardTooltipTypeText_;
+    std::optional<sf::Text> cardTooltipCostText_;
+    std::optional<sf::Text> cardTooltipDescriptionText_;
+    sf::Vector2f cardTooltipPosition_{0.0f, 0.0f};
+    sf::Vector2f cardTooltipSize_{0.0f, 0.0f};
+    bool cardTooltipVisible_ = false;
 };

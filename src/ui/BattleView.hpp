@@ -10,6 +10,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // 战斗界面：绘制玩家、敌人、手牌和“结束回合”按钮，
@@ -92,6 +93,7 @@ private:
     void updateHoverCardTexture(sf::RenderTexture& texture, const Card& card) const;
     void updateHoverPanel(const Card& card, const sf::FloatRect& bounds);
     void playHoverSound();
+    void playEndTurnSound();
     std::string cardTypeLabel(CardType type) const;
     void drawHoverVisual(sf::RenderTarget& target, const HoverCardVisual& visual,
                          const sf::RenderTexture& texture, bool isHovered) const;
@@ -105,7 +107,12 @@ private:
     void loadCardSounds();
     void playCardSound(const Card& card);
     void drawPlayerPanel(sf::RenderWindow& window, const Player& player) const;
-    void drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy) const;
+    void drawPlayerVisual(sf::RenderWindow& window) const;
+    void drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy,
+                        int displayedIntentDamage) const;
+    void loadEnemyVisuals();
+    void loadPlayerVisuals();
+    void drawEnemyVisual(sf::RenderWindow& window, const Enemy& enemy) const;
     void drawHand(sf::RenderWindow& window, const std::vector<Card>& hand) const;
     void drawEndTurnButton(sf::RenderWindow& window) const;
     sf::FloatRect getSelectionTargetBounds(BattleTargetKind targetKind) const;
@@ -117,9 +124,11 @@ private:
     sf::Music hoverCardSound_;
     sf::Music attackCardSound_;
     sf::Music defenseCardSound_;
+    sf::Music endTurnSound_;
     bool hoverCardSoundLoaded_;
     bool attackCardSoundLoaded_;
     bool defenseCardSoundLoaded_;
+    bool endTurnSoundLoaded_;
     bool hoverTextureReady_ = false;
     HandState handState_ = HandState::Idle;
     HoverCardVisual hoveredCard_;
@@ -138,7 +147,15 @@ private:
     sf::Vector2f hoverPanelPosition_{0.0f, 0.0f};
     sf::Vector2f hoverPanelSize_{0.0f, 0.0f};
     bool hoverPanelVisible_ = false;
+    bool endTurnHovered_ = false;
     std::vector<PlayAnim> activePlays_;
     std::vector<HitBurst> activeBursts_;
     float selectionTimer_ = 0.0f;
+    sf::Texture belialTexture_;
+    std::vector<sf::Texture> playerFrames_;
+    std::unordered_map<std::string, std::vector<sf::Texture>> enemyAnimations_;
+    std::size_t playerAnimationFrame_ = 0;
+    std::size_t enemyAnimationFrame_ = 0;
+    float playerAnimationTimer_ = 0.0f;
+    float enemyAnimationTimer_ = 0.0f;
 };

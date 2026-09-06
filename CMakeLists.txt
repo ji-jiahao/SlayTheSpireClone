@@ -75,7 +75,7 @@ add_library(room_system STATIC
 )
 
 target_include_directories(room_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(room_system PUBLIC card_system relic_system)
+target_link_libraries(room_system PUBLIC card_system)
 
 add_library(ui STATIC
     src/ui/CardView.cpp
@@ -146,12 +146,17 @@ if(BUILD_TESTING)
     add_test(NAME RelicTests COMMAND RelicTests)
 
     add_executable(RoomTests tests/room_tests.cpp)
-    target_link_libraries(RoomTests PRIVATE room_system relic_system)
+    target_link_libraries(RoomTests PRIVATE room_system)
     add_test(NAME RoomTests COMMAND RoomTests)
 
     add_executable(MapTests tests/map_tests.cpp)
     target_link_libraries(MapTests PRIVATE map_system)
     add_test(NAME MapTests COMMAND MapTests)
+
+    add_executable(EventTests tests/event_tests.cpp)
+    target_link_libraries(EventTests PRIVATE event_system)
+    add_test(NAME EventTests COMMAND EventTests
+             "${CMAKE_CURRENT_SOURCE_DIR}/assets/data/events.json")
 endif()
 
 if(WIN32)

@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <random>
 #include <vector>
 
@@ -17,6 +18,17 @@ public:
     bool discardCard(std::size_t handIndex);
     bool exhaustCard(std::size_t handIndex);
     void discardHand();
+    void addToDiscardPile(const Card& card, std::size_t count = 1);
+    void addToHand(const Card& card);
+    void addToDrawPileTop(const Card& card);
+    void addToExhaustPile(const Card& card);
+    bool upgradeHandCard(std::size_t handIndex);
+    std::size_t upgradeAllHandCards();
+    std::optional<Card> takeTopDrawCard();
+    bool moveTopDiscardToDrawPile();
+    bool moveDiscardCardToDrawPileTop(std::size_t discardIndex);
+    bool moveHandCardToDrawPileTop(std::size_t handIndex);
+    bool moveExhaustCardToHand(std::size_t exhaustIndex);
 
     const std::vector<Card>& getDrawPile() const;
     const std::vector<Card>& getHand() const;

@@ -36,3 +36,7 @@
 
 # 本地设计源文件，运行时只需要 assets/images/map/ 下的图片。
 /src/map/map_icons.zip
+
+# 卡牌资源替换时产生的本地备份和解压中间目录。
+/.codex/card_v2_backup_*/
+/.codex/card_v3_extract_*/

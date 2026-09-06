@@ -1,6 +1,7 @@
 #include "card/CardDatabase.hpp"
 
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace
@@ -31,7 +32,9 @@ Card makeCard(std::string id, std::string name, CardType type, CardRarity rarity
 
     for (const CardEffect& cardEffect : card.effects)
     {
-        if (cardEffect.type == CardEffectType::Damage && card.damage == 0)
+        if ((cardEffect.type == CardEffectType::Damage ||
+             cardEffect.type == CardEffectType::MultiDamage) &&
+            card.damage == 0)
         {
             card.damage = cardEffect.value;
         }
@@ -48,9 +51,18 @@ Card attack(std::string id, std::string name, CardRarity rarity, int cost,
             int upgradedCost = -1)
 {
     const int improvedDamage = upgradedDamage < 0 ? damage : upgradedDamage;
+    std::string upgradedDescription = description;
+    const std::string baseDamage = std::to_string(damage);
+    const std::size_t damagePosition = upgradedDescription.find(baseDamage);
+    if (damagePosition != std::string::npos && improvedDamage != damage)
+    {
+        upgradedDescription.replace(damagePosition, baseDamage.size(),
+                                     std::to_string(improvedDamage));
+    }
     return makeCard(std::move(id), std::move(name), CardType::Attack, rarity, cost,
         std::move(description), {makeEffect(CardEffectType::Damage, damage, CardTarget::Enemy)},
-        {}, {makeEffect(CardEffectType::Damage, improvedDamage, CardTarget::Enemy)}, upgradedCost);
+        std::move(upgradedDescription),
+        {makeEffect(CardEffectType::Damage, improvedDamage, CardTarget::Enemy)}, upgradedCost);
 }
 
 Card skill(std::string id, std::string name, CardRarity rarity, int cost,
@@ -58,9 +70,18 @@ Card skill(std::string id, std::string name, CardRarity rarity, int cost,
            int upgradedCost = -1)
 {
     const int improvedBlock = upgradedBlock < 0 ? block : upgradedBlock;
+    std::string upgradedDescription = description;
+    const std::string baseBlock = std::to_string(block);
+    const std::size_t blockPosition = upgradedDescription.find(baseBlock);
+    if (blockPosition != std::string::npos && improvedBlock != block)
+    {
+        upgradedDescription.replace(blockPosition, baseBlock.size(),
+                                    std::to_string(improvedBlock));
+    }
     return makeCard(std::move(id), std::move(name), CardType::Skill, rarity, cost,
         std::move(description), {makeEffect(CardEffectType::Block, block)},
-        {}, {makeEffect(CardEffectType::Block, improvedBlock)}, upgradedCost);
+        std::move(upgradedDescription),
+        {makeEffect(CardEffectType::Block, improvedBlock)}, upgradedCost);
 }
 }
 
@@ -99,7 +120,6 @@ std::vector<Card> CardDatabase::createIroncladCardPool()
 {
     return {
         createStrike(), createDefend(), createBash(),
-        attack("anger", "愤怒", CardRarity::Common, 0, 6, "造成 6 点伤害。将一张愤怒加入弃牌堆。", 8),
         makeCard("armaments", "武装", CardType::Skill, CardRarity::Common, 1,
             "获得 5 点格挡。升级手牌中的一张牌。",
             {makeEffect(CardEffectType::Block, 5), makeEffect(CardEffectType::UpgradeCard, 1)},
@@ -335,23 +355,6 @@ Card CardDatabase::createFromInstance(const CardInstance& instance)
         return card;
     }
 
-    card.name += "+";
-    card.cost = card.upgradedCost;
-    card.description = card.upgradedDescription;
-    card.effects = card.upgradedEffects;
-    card.damage = 0;
-    card.block = 0;
-    for (const CardEffect& effect : card.effects)
-    {
-        if ((effect.type == CardEffectType::Damage || effect.type == CardEffectType::MultiDamage) &&
-            card.damage == 0)
-        {
-            card.damage = effect.value;
-        }
-        if (effect.type == CardEffectType::Block && card.block == 0)
-        {
-            card.block = effect.value;
-        }
-    }
+    card.upgrade();
     return card;
 }

@@ -1,6 +1,7 @@
 #include "ui/ShopView.hpp"
 
 #include "card/CardDatabase.hpp"
+#include "ui/BattleHover.hpp"
 #include "ui/CardView.hpp"
 #include "ui/UiHelpers.hpp"
 
@@ -15,7 +16,7 @@ namespace
 {
 constexpr float kWindowWidth = 1280.0f;
 constexpr float kWindowHeight = 720.0f;
-constexpr float kShopCardScale = 0.58f;
+constexpr float kShopCardScale = 0.72f;
 constexpr float kDeckCardScale = 0.46f;
 constexpr float kDialogueFadeInSeconds = 0.45f;
 constexpr float kDialogueVisibleSeconds = 3.0f;
@@ -24,6 +25,20 @@ constexpr float kDialogueCycleSeconds =
     kDialogueFadeInSeconds + kDialogueVisibleSeconds + kDialogueFadeOutSeconds;
 constexpr float kDialoguePauseSeconds = 0.8f;
 constexpr float kMerchantFrameSeconds = 0.09f;
+
+std::string joinLines(const std::vector<std::string>& lines)
+{
+    std::string result;
+    for (std::size_t index = 0; index < lines.size(); ++index)
+    {
+        if (index > 0)
+        {
+            result += '\n';
+        }
+        result += lines[index];
+    }
+    return result;
+}
 
 sf::Color priceColor(bool affordable)
 {
@@ -34,6 +49,31 @@ sf::Color priceColor(bool affordable)
 void ShopView::setFont(const sf::Font& font)
 {
     font_ = &font;
+
+    cardTooltipBackground_.setFillColor(sf::Color(27, 25, 30, 242));
+    cardTooltipOutline_.setFillColor(sf::Color::Transparent);
+    cardTooltipOutline_.setOutlineColor(sf::Color(244, 216, 150, 130));
+    cardTooltipOutline_.setOutlineThickness(3.0f);
+    cardTooltipCostCircle_.setRadius(15.0f);
+    cardTooltipCostCircle_.setPointCount(32);
+    cardTooltipCostCircle_.setOrigin({15.0f, 15.0f});
+    cardTooltipCostCircle_.setFillColor(sf::Color(244, 232, 198));
+    cardTooltipCostCircle_.setOutlineColor(sf::Color(52, 42, 30));
+    cardTooltipCostCircle_.setOutlineThickness(2.0f);
+
+    cardTooltipNameText_.emplace(font, UiHelpers::toSfString(""), 22);
+    cardTooltipNameText_->setFillColor(sf::Color(246, 239, 224));
+    cardTooltipTypeText_.emplace(font, UiHelpers::toSfString(""), 16);
+    cardTooltipTypeText_->setFillColor(sf::Color(218, 208, 190));
+    cardTooltipCostText_.emplace(font, UiHelpers::toSfString(""), 18);
+    cardTooltipCostText_->setFillColor(sf::Color(44, 34, 24));
+    cardTooltipDescriptionText_.emplace(font, UiHelpers::toSfString(""), 15);
+    cardTooltipDescriptionText_->setFillColor(sf::Color(230, 222, 208));
+}
+
+void ShopView::setBackground(const sf::Texture* texture)
+{
+    background_ = texture;
 }
 
 bool ShopView::loadMerchantAnimation(const std::string& framesDirectory)
@@ -112,6 +152,22 @@ void ShopView::handleMouseMove(sf::Vector2f position, const ShopSystem& shop,
                                const GameState& state, bool removingCard)
 {
     hoveredAction_ = handleMouseClick(position, shop, state, removingCard);
+    clearCardTooltip();
+
+    if (removingCard || hoveredAction_.type != ShopActionType::BuyCard)
+    {
+        return;
+    }
+
+    const auto& offers = shop.getCardOffers();
+    if (hoveredAction_.index >= offers.size() ||
+        offers[hoveredAction_.index].sold)
+    {
+        return;
+    }
+
+    updateCardTooltip(offers[hoveredAction_.index].card,
+                      cardBounds(hoveredAction_.index));
 }
 
 ShopAction ShopView::handleMouseClick(sf::Vector2f position, const ShopSystem& shop,
@@ -144,15 +200,6 @@ ShopAction ShopView::handleMouseClick(sf::Vector2f position, const ShopSystem& s
         }
     }
 
-    const auto& relicOffers = shop.getRelicOffers();
-    for (std::size_t index = 0; index < relicOffers.size(); ++index)
-    {
-        if (UiHelpers::contains(relicBounds(index), position))
-        {
-            return {ShopActionType::BuyRelic, index};
-        }
-    }
-
     if (UiHelpers::contains(removeButtonBounds(), position))
     {
         return {ShopActionType::OpenRemove, 0};
@@ -170,9 +217,27 @@ void ShopView::draw(sf::RenderWindow& window, const ShopSystem& shop,
                     const GameState& state, bool removingCard,
                     const std::string& message) const
 {
-    sf::RectangleShape background({kWindowWidth, kWindowHeight});
-    background.setFillColor(sf::Color(28, 27, 31));
-    window.draw(background);
+    if (background_ != nullptr)
+    {
+        sf::Sprite background(*background_);
+        const sf::FloatRect bounds = background.getLocalBounds();
+        const float scale = std::max(kWindowWidth / bounds.size.x,
+                                     kWindowHeight / bounds.size.y);
+        background.setScale({scale, scale});
+        background.setPosition({(kWindowWidth - bounds.size.x * scale) / 2.0f,
+                                (kWindowHeight - bounds.size.y * scale) / 2.0f});
+        window.draw(background);
+
+        sf::RectangleShape veil({kWindowWidth, kWindowHeight});
+        veil.setFillColor(sf::Color(12, 10, 9, 78));
+        window.draw(veil);
+    }
+    else
+    {
+        sf::RectangleShape background({kWindowWidth, kWindowHeight});
+        background.setFillColor(sf::Color(28, 27, 31));
+        window.draw(background);
+    }
 
     drawMerchant(window);
 
@@ -294,37 +359,6 @@ void ShopView::draw(sf::RenderWindow& window, const ShopSystem& shop,
                                                    : priceColor(state.gold >= offer.price));
         }
 
-        UiHelpers::drawText(window, *font_, "遗物", 28, {385.0f, 455.0f},
-                            sf::Color(230, 220, 190));
-        for (std::size_t index = 0; index < shop.getRelicOffers().size(); ++index)
-        {
-            const ShopRelicOffer& offer = shop.getRelicOffers()[index];
-            const sf::FloatRect bounds = relicBounds(index);
-            sf::RectangleShape relicBox(bounds.size);
-            relicBox.setPosition(bounds.position);
-            relicBox.setFillColor(offer.sold ? sf::Color(52, 52, 56)
-                                             : sf::Color(69, 60, 79));
-            relicBox.setOutlineColor(hoveredAction_.type == ShopActionType::BuyRelic &&
-                                         hoveredAction_.index == index
-                                     ? sf::Color(244, 220, 150)
-                                     : sf::Color(150, 128, 88));
-            relicBox.setOutlineThickness(3.0f);
-            window.draw(relicBox);
-
-            UiHelpers::drawCenteredText(window, *font_, offer.relic.name, 18,
-                                        {{bounds.position.x + 10.0f, bounds.position.y + 12.0f},
-                                         {bounds.size.x - 20.0f, 30.0f}},
-                                        sf::Color(242, 236, 216));
-            UiHelpers::drawCenteredText(window, *font_,
-                                        offer.sold ? "已售出" :
-                                            std::to_string(offer.price) + " 金币",
-                                        16,
-                                        {{bounds.position.x + 10.0f, bounds.position.y + 50.0f},
-                                         {bounds.size.x - 20.0f, 26.0f}},
-                                        offer.sold ? sf::Color(160, 160, 160)
-                                                   : priceColor(state.gold >= offer.price));
-        }
-
         UiHelpers::drawButton(window, *font_, removeButtonBounds(),
                               "删除卡牌 " + std::to_string(shop.getRemoveCardPrice()),
                               !state.deck.empty() && state.gold >= shop.getRemoveCardPrice(),
@@ -332,6 +366,8 @@ void ShopView::draw(sf::RenderWindow& window, const ShopSystem& shop,
         UiHelpers::drawButton(window, *font_, leaveButtonBounds(), "离开",
                               true, hoveredAction_.type == ShopActionType::Leave);
     }
+
+    drawCardTooltip(window);
 
     if (!message.empty())
     {
@@ -341,12 +377,110 @@ void ShopView::draw(sf::RenderWindow& window, const ShopSystem& shop,
     }
 }
 
+void ShopView::updateCardTooltip(const Card& card, const sf::FloatRect& bounds)
+{
+    if (font_ == nullptr)
+    {
+        return;
+    }
+
+    constexpr float kPanelWidth = 284.0f;
+    constexpr float kSidePadding = 16.0f;
+    constexpr float kLineHeight = 20.0f;
+    const std::vector<std::string> wrappedLines =
+        UiHelpers::wrapText(*font_, card.description, 15, kPanelWidth - 32.0f);
+
+    cardTooltipSize_ = {
+        kPanelWidth, 112.0f + static_cast<float>(wrappedLines.size()) * kLineHeight};
+    cardTooltipPosition_ = BattleHover::computeTooltipPosition(
+        bounds, cardTooltipSize_, {kWindowWidth, kWindowHeight});
+
+    cardTooltipBackground_.setSize(cardTooltipSize_);
+    cardTooltipBackground_.setPosition(cardTooltipPosition_);
+    cardTooltipOutline_.setSize(cardTooltipSize_);
+    cardTooltipOutline_.setPosition(cardTooltipPosition_);
+
+    if (!cardTooltipNameText_.has_value() || !cardTooltipTypeText_.has_value() ||
+        !cardTooltipCostText_.has_value() || !cardTooltipDescriptionText_.has_value())
+    {
+        return;
+    }
+
+    cardTooltipNameText_->setString(UiHelpers::toSfString(card.name));
+    cardTooltipNameText_->setPosition({cardTooltipPosition_.x + kSidePadding,
+                                       cardTooltipPosition_.y + 12.0f});
+    cardTooltipTypeText_->setString(
+        UiHelpers::toSfString("类型 " + cardTypeLabel(card.type)));
+    cardTooltipTypeText_->setPosition({cardTooltipPosition_.x + kSidePadding,
+                                       cardTooltipPosition_.y + 40.0f});
+
+    cardTooltipCostText_->setString(UiHelpers::toSfString(
+        card.cost < 0 ? "X" : std::to_string(card.cost)));
+    cardTooltipCostCircle_.setPosition(
+        {cardTooltipPosition_.x + cardTooltipSize_.x - 30.0f,
+         cardTooltipPosition_.y + 26.0f});
+    const sf::FloatRect costBounds = cardTooltipCostText_->getLocalBounds();
+    cardTooltipCostText_->setPosition(
+        {cardTooltipPosition_.x + cardTooltipSize_.x - 30.0f -
+             costBounds.position.x - costBounds.size.x / 2.0f,
+         cardTooltipPosition_.y + 26.0f - costBounds.position.y -
+             costBounds.size.y / 2.0f - 2.0f});
+
+    cardTooltipDescriptionText_->setString(
+        UiHelpers::toSfString(joinLines(wrappedLines)));
+    cardTooltipDescriptionText_->setPosition({cardTooltipPosition_.x + kSidePadding,
+                                               cardTooltipPosition_.y + 66.0f});
+    cardTooltipVisible_ = true;
+}
+
+void ShopView::clearCardTooltip()
+{
+    cardTooltipVisible_ = false;
+}
+
+void ShopView::drawCardTooltip(sf::RenderWindow& window) const
+{
+    if (!cardTooltipVisible_ || font_ == nullptr)
+    {
+        return;
+    }
+
+    window.draw(cardTooltipBackground_);
+    window.draw(cardTooltipOutline_);
+    if (!cardTooltipNameText_.has_value() || !cardTooltipTypeText_.has_value() ||
+        !cardTooltipCostText_.has_value() || !cardTooltipDescriptionText_.has_value())
+    {
+        return;
+    }
+
+    window.draw(*cardTooltipNameText_);
+    window.draw(*cardTooltipTypeText_);
+    window.draw(cardTooltipCostCircle_);
+    window.draw(*cardTooltipCostText_);
+    window.draw(*cardTooltipDescriptionText_);
+}
+
+std::string ShopView::cardTypeLabel(CardType type) const
+{
+    switch (type)
+    {
+    case CardType::Attack:
+        return "攻击";
+    case CardType::Skill:
+        return "技能";
+    case CardType::Power:
+        return "能力";
+    }
+
+    return "未知";
+}
+
 sf::FloatRect ShopView::cardBounds(std::size_t index) const
 {
     const float width = 160.0f * kShopCardScale;
     const float height = 220.0f * kShopCardScale;
-    const float x = 365.0f + static_cast<float>(index % 3) * 155.0f;
-    const float y = 104.0f + static_cast<float>(index / 3) * 185.0f;
+    const float x = 350.0f + static_cast<float>(index % 4) * 150.0f;
+    const float y = 112.0f + static_cast<float>(index / 4) * 245.0f;
     return {{x, y}, {width, height}};
 }
 
@@ -445,15 +579,9 @@ void ShopView::drawDialogueBubble(sf::RenderWindow& window) const
     window.draw(line);
 }
 
-sf::FloatRect ShopView::relicBounds(std::size_t index) const
-{
-    return {{365.0f + static_cast<float>(index) * 190.0f, 505.0f},
-            {160.0f, 94.0f}};
-}
-
 sf::FloatRect ShopView::removeButtonBounds() const
 {
-    return {{950.0f, 505.0f}, {210.0f, 64.0f}};
+    return {{950.0f, 485.0f}, {210.0f, 64.0f}};
 }
 
 sf::FloatRect ShopView::leaveButtonBounds() const

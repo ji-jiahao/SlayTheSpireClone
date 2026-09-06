@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cmath>
 #include <string>
+#include <utility>
 
 namespace
 {
@@ -28,6 +29,9 @@ constexpr float kPlayScaleEnd = 0.84f;
 constexpr const char* kHoverCardSoundPath = "assets/sounds/card_select.mp3";
 constexpr const char* kAttackCardSoundPath = "assets/sounds/card_attack.mp3";
 constexpr const char* kDefenseCardSoundPath = "assets/sounds/card_defense.mp3";
+constexpr const char* kEndTurnSoundPath = "assets/sounds/end_turn.mp3";
+constexpr float kPlayerFrameSeconds = 0.10f;
+constexpr float kEnemyFrameSeconds = 0.10f;
 
 sf::Vector2f playerFocusPoint()
 {
@@ -64,6 +68,35 @@ void drawBar(sf::RenderWindow& window, sf::Vector2f position, sf::Vector2f size,
     window.draw(outline);
 }
 
+std::string intentCategory(const EnemyIntent& intent)
+{
+    std::string category;
+    if (intent.damage > 0)
+    {
+        category = "攻击";
+    }
+    if (intent.weak > 0 || intent.vulnerable > 0 || intent.frail > 0 ||
+        intent.slimed > 0)
+    {
+        if (!category.empty())
+        {
+            category += "/";
+        }
+        category += "施加负面状态";
+    }
+    if (intent.block > 0 || intent.strength > 0 || intent.dexterity > 0 ||
+        intent.type == EnemyIntentType::Sleep ||
+        intent.type == EnemyIntentType::Preparing || category.empty())
+    {
+        if (!category.empty())
+        {
+            category += "/";
+        }
+        category += "防御";
+    }
+    return category;
+}
+
 std::string joinLines(const std::vector<std::string>& lines)
 {
     std::string result;
@@ -96,7 +129,8 @@ BattleView::BattleView()
       background_(nullptr),
       hoverCardSoundLoaded_(false),
       attackCardSoundLoaded_(false),
-      defenseCardSoundLoaded_(false)
+      defenseCardSoundLoaded_(false),
+      endTurnSoundLoaded_(false)
 {
     hoverTextureReady_ = hoveredCardTexture_.resize({160, 220}) &&
                         fadingCardTexture_.resize({160, 220});
@@ -115,6 +149,8 @@ BattleView::BattleView()
     hoverCostCircle_.setOrigin({15.0f, 15.0f});
 
     loadCardSounds();
+    loadPlayerVisuals();
+    loadEnemyVisuals();
 }
 
 void BattleView::setFont(const sf::Font& font)
@@ -161,11 +197,26 @@ void BattleView::reset()
     activeBursts_.clear();
     selectionTimer_ = 0.0f;
     hoverPanelVisible_ = false;
+    endTurnHovered_ = false;
+    playerAnimationTimer_ = 0.0f;
+    playerAnimationFrame_ = 0;
 }
 
 void BattleView::update(float deltaSeconds)
 {
     updateActiveVisuals(deltaSeconds);
+    playerAnimationTimer_ += std::max(0.0f, deltaSeconds);
+    while (playerAnimationTimer_ >= kPlayerFrameSeconds && !playerFrames_.empty())
+    {
+        playerAnimationTimer_ -= kPlayerFrameSeconds;
+        ++playerAnimationFrame_;
+    }
+    enemyAnimationTimer_ += std::max(0.0f, deltaSeconds);
+    while (enemyAnimationTimer_ >= kEnemyFrameSeconds)
+    {
+        enemyAnimationTimer_ -= kEnemyFrameSeconds;
+        ++enemyAnimationFrame_;
+    }
 }
 
 void BattleView::handleMouseMove(sf::Vector2f mousePosition, const CombatSystem& combat)
@@ -174,14 +225,18 @@ void BattleView::handleMouseMove(sf::Vector2f mousePosition, const CombatSystem&
     {
         clearHoverVisual();
         clearTargetSelection();
+        endTurnHovered_ = false;
         return;
     }
 
     if (handState_ == HandState::SelectingTarget)
     {
         updateSelectionTargetHover(mousePosition);
+        endTurnHovered_ = false;
         return;
     }
+
+    endTurnHovered_ = getEndTurnButtonBounds().contains(mousePosition);
 
     const std::vector<Card>& hand = combat.getHandCards();
     const std::vector<BattleHover::HandCardLayout> layouts =
@@ -242,12 +297,13 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
         }
 
         const Card card = hand[static_cast<std::size_t>(layout.handIndex)];
-        if (card.cost < 0)
+        const int cardCost = combat.getPlayableCardCost(card);
+        if (cardCost < 0)
         {
             return;
         }
 
-        if (combat.getPlayer().getCurrentEnergy() < card.cost)
+        if (combat.getPlayer().getCurrentEnergy() < cardCost)
         {
             return;
         }
@@ -268,6 +324,7 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
     if (getEndTurnButtonBounds().contains(mousePosition))
     {
         combat.endPlayerTurn();
+        playEndTurnSound();
     }
 }
 
@@ -311,6 +368,7 @@ void BattleView::beginHoverVisual(const std::vector<Card>& hand, int handIndex,
             {
                 fadingCard_.progress = 1.0f;
             }
+            updateHoverCardTexture(fadingCardTexture_, fadingCard_.card);
         }
 
         hoveredCard_.active = false;
@@ -328,6 +386,7 @@ void BattleView::beginHoverVisual(const std::vector<Card>& hand, int handIndex,
         {
             fadingCard_.progress = 1.0f;
         }
+        updateHoverCardTexture(fadingCardTexture_, fadingCard_.card);
     }
 
     hoveredCard_.handIndex = handIndex;
@@ -351,6 +410,7 @@ void BattleView::clearHoverVisual()
         {
             fadingCard_.progress = 1.0f;
         }
+        updateHoverCardTexture(fadingCardTexture_, fadingCard_.card);
     }
 
     hoveredCard_.active = false;
@@ -526,7 +586,7 @@ void BattleView::updateHoverPanel(const Card& card, const sf::FloatRect& bounds)
     hoverTypeText_->setPosition({hoverPanelPosition_.x + kSidePadding,
                                  hoverPanelPosition_.y + 40.0f});
 
-    const std::string costLabel = card.cost < 0 ? "X" : std::to_string(card.cost);
+    const std::string costLabel = card.cost == -1 ? "X" : std::to_string(card.cost);
     hoverCostText_->setString(UiHelpers::toSfString(costLabel));
     hoverCostCircle_.setPosition({hoverPanelPosition_.x + hoverPanelSize_.x - 30.0f,
                                   hoverPanelPosition_.y + 26.0f});
@@ -552,6 +612,17 @@ void BattleView::playHoverSound()
 
     hoverCardSound_.stop();
     hoverCardSound_.play();
+}
+
+void BattleView::playEndTurnSound()
+{
+    if (!endTurnSoundLoaded_)
+    {
+        return;
+    }
+
+    endTurnSound_.stop();
+    endTurnSound_.play();
 }
 
 std::string BattleView::cardTypeLabel(CardType type) const
@@ -629,6 +700,15 @@ void BattleView::drawHoverVisual(sf::RenderTarget& target, const HoverCardVisual
                                        static_cast<std::uint8_t>(95.0f * eased)));
         glow.setOutlineThickness(3.0f);
         target.draw(glow);
+    }
+
+    if (!isHovered)
+    {
+        const sf::Vector2f topLeft{
+            cardCenter.x - CardView::getCardSize().x * scale / 2.0f,
+            cardCenter.y - CardView::getCardSize().y * scale / 2.0f};
+        drawHandCard(target, visual.card, topLeft, scale, 0.0f);
+        return;
     }
 
     sf::Sprite sprite(texture.getTexture());
@@ -738,6 +818,13 @@ void BattleView::loadCardSounds()
         defenseCardSound_.setVolume(100.0f);
         defenseCardSound_.setLooping(false);
     }
+
+    endTurnSoundLoaded_ = endTurnSound_.openFromFile(kEndTurnSoundPath);
+    if (endTurnSoundLoaded_)
+    {
+        endTurnSound_.setVolume(100.0f);
+        endTurnSound_.setLooping(false);
+    }
 }
 
 void BattleView::playCardSound(const Card& card)
@@ -777,22 +864,26 @@ void BattleView::draw(sf::RenderWindow& window, const CombatSystem& combat) cons
         window.draw(background);
     }
 
-    sf::CircleShape playerBody(68.0f, 24);
-    playerBody.setPosition({155.0f, 245.0f});
-    playerBody.setFillColor(sf::Color(128, 48, 42, 225));
-    playerBody.setOutlineColor(sf::Color(224, 174, 104));
-    playerBody.setOutlineThickness(4.0f);
-    window.draw(playerBody);
+    drawPlayerVisual(window);
 
     sf::CircleShape enemyBody(75.0f, 7);
     enemyBody.setPosition({950.0f, 235.0f});
     enemyBody.setFillColor(sf::Color(58, 50, 70, 235));
-    enemyBody.setOutlineColor(sf::Color(183, 95, 84));
-    enemyBody.setOutlineThickness(4.0f);
-    window.draw(enemyBody);
+    if (combat.getEnemy().getId() == "belial" && belialTexture_.getSize().x > 0)
+    {
+        drawEnemyVisual(window, combat.getEnemy());
+    }
+    else if (enemyAnimations_.find(combat.getEnemy().getId()) != enemyAnimations_.end())
+    {
+        drawEnemyVisual(window, combat.getEnemy());
+    }
+    else
+    {
+        window.draw(enemyBody);
+    }
 
     drawPlayerPanel(window, combat.getPlayer());
-    drawEnemyPanel(window, combat.getEnemy());
+    drawEnemyPanel(window, combat.getEnemy(), combat.getEnemyIntentDamage());
     drawHand(window, combat.getHandCards());
     drawEndTurnButton(window);
 
@@ -826,15 +917,117 @@ void BattleView::draw(sf::RenderWindow& window, const CombatSystem& combat) cons
     }
 }
 
+void BattleView::loadEnemyVisuals()
+{
+    const bool loaded = belialTexture_.loadFromFile("assets/images/enemies/belial.png");
+    (void)loaded;
+
+    static const std::array<std::pair<const char*, const char*>, 6> animationPaths = {{
+        {"cultist", "assets/images/enemies/cultist"},
+        {"acid_slime", "assets/images/enemies/acid_slime"},
+        {"fungi_beast", "assets/images/enemies/fungi_beast"},
+        {"jaw_worm", "assets/images/enemies/jaw_worm"},
+        {"slime_boss", "assets/images/enemies/dark_beast"},
+        {"lagavulin", "assets/images/enemies/lagavulin"},
+    }};
+
+    for (const auto& [enemyId, directory] : animationPaths)
+    {
+        std::vector<sf::Texture> frames;
+        for (int frameIndex = 0; frameIndex < 10; ++frameIndex)
+        {
+            sf::Texture texture;
+            const bool frameLoaded = texture.loadFromFile(
+                std::string(directory) + "/frame_" +
+                (frameIndex < 10 ? "00" : frameIndex < 100 ? "0" : "") +
+                std::to_string(frameIndex) + ".png");
+            if (!frameLoaded)
+            {
+                break;
+            }
+            frames.push_back(std::move(texture));
+        }
+        if (!frames.empty())
+        {
+            enemyAnimations_.emplace(enemyId, std::move(frames));
+        }
+    }
+}
+
+void BattleView::loadPlayerVisuals()
+{
+    playerFrames_.clear();
+    playerFrames_.reserve(16);
+    for (int frameIndex = 0; frameIndex < 16; ++frameIndex)
+    {
+        sf::Texture texture;
+        const bool loaded = texture.loadFromFile(
+            std::string("assets/images/player/tafi_frames/frame_") +
+            (frameIndex < 10 ? "00" : "0") + std::to_string(frameIndex) + ".png");
+        if (!loaded)
+        {
+            playerFrames_.clear();
+            return;
+        }
+        playerFrames_.push_back(std::move(texture));
+    }
+}
+
+void BattleView::drawPlayerVisual(sf::RenderWindow& window) const
+{
+    if (playerFrames_.empty())
+    {
+        sf::CircleShape playerBody(68.0f, 24);
+        playerBody.setPosition({155.0f, 245.0f});
+        playerBody.setFillColor(sf::Color(128, 48, 42, 225));
+        window.draw(playerBody);
+        return;
+    }
+
+    const sf::Texture& texture =
+        playerFrames_[playerAnimationFrame_ % playerFrames_.size()];
+    const sf::Vector2u size = texture.getSize();
+    sf::Sprite sprite(texture);
+    sprite.setOrigin({static_cast<float>(size.x) / 2.0f,
+                      static_cast<float>(size.y) / 2.0f});
+    sprite.setPosition(playerFocusPoint());
+    const float targetHeight = 250.0f;
+    const float scale = targetHeight / static_cast<float>(size.y);
+    sprite.setScale({scale, scale});
+    window.draw(sprite);
+}
+
+void BattleView::drawEnemyVisual(sf::RenderWindow& window, const Enemy& enemy) const
+{
+    const sf::Texture* texture = nullptr;
+    if (enemy.getId() == "belial")
+    {
+        texture = &belialTexture_;
+    }
+    else
+    {
+        auto animationIt = enemyAnimations_.find(enemy.getId());
+        if (animationIt == enemyAnimations_.end() || animationIt->second.empty())
+        {
+            return;
+        }
+        const std::vector<sf::Texture>& frames = animationIt->second;
+        texture = &frames[enemyAnimationFrame_ % frames.size()];
+    }
+
+    const sf::Vector2u size = texture->getSize();
+    sf::Sprite sprite(*texture);
+    sprite.setOrigin({static_cast<float>(size.x) / 2.0f,
+                      static_cast<float>(size.y) / 2.0f});
+    sprite.setPosition(enemyFocusPoint());
+    const float targetHeight = enemy.getId() == "belial" ? 300.0f : 210.0f;
+    const float scale = targetHeight / static_cast<float>(size.y);
+    sprite.setScale({scale, scale});
+    window.draw(sprite);
+}
+
 void BattleView::drawPlayerPanel(sf::RenderWindow& window, const Player& player) const
 {
-    sf::RectangleShape panel({380.0f, 150.0f});
-    panel.setPosition({40.0f, 40.0f});
-    panel.setFillColor(sf::Color(48, 52, 58));
-    panel.setOutlineColor(sf::Color(40, 32, 26));
-    panel.setOutlineThickness(2.0f);
-    window.draw(panel);
-
     const float maxHealth = static_cast<float>(player.getMaxHealth());
     const float currentHealth = static_cast<float>(player.getCurrentHealth());
 
@@ -844,49 +1037,51 @@ void BattleView::drawPlayerPanel(sf::RenderWindow& window, const Player& player)
         title.setPosition({58.0f, 52.0f});
         window.draw(title);
 
-        sf::Text hpText =
-            UiHelpers::makeText(*font_, "HP " + std::to_string(player.getCurrentHealth()) +
-                                             "/" + std::to_string(player.getMaxHealth()),
-                                18, sf::Color(222, 210, 190));
-        hpText.setPosition({58.0f, 92.0f});
-        window.draw(hpText);
-
         sf::Text energyText =
             UiHelpers::makeText(*font_, "能量 " + std::to_string(player.getCurrentEnergy()) +
                                              "/" + std::to_string(player.getMaxEnergy()),
                                 18, sf::Color(240, 200, 120));
-        energyText.setPosition({250.0f, 92.0f});
+        energyText.setPosition({270.0f, 52.0f});
         window.draw(energyText);
-
-        sf::Text blockText =
-            UiHelpers::makeText(*font_, "格挡 " + std::to_string(player.getBlock()), 18,
-                                sf::Color(140, 180, 230));
-        blockText.setPosition({58.0f, 140.0f});
-        window.draw(blockText);
 
         const std::string status = "力量 " + std::to_string(player.getStrength()) +
                                    "  虚弱 " + std::to_string(player.getWeak()) +
                                    "  易伤 " + std::to_string(player.getVulnerable());
         sf::Text statusText = UiHelpers::makeText(*font_, status, 15,
                                                    sf::Color(190, 190, 200));
-        statusText.setPosition({150.0f, 143.0f});
+        statusText.setPosition({58.0f, 166.0f});
         window.draw(statusText);
     }
 
     const float hpRatio = maxHealth > 0.0f ? currentHealth / maxHealth : 0.0f;
-    drawBar(window, {58.0f, 122.0f}, {180.0f, 16.0f}, hpRatio,
+    const float blockRatio = maxHealth > 0.0f
+                                 ? static_cast<float>(player.getBlock()) / maxHealth
+                                 : 0.0f;
+    drawBar(window, {58.0f, 90.0f}, {300.0f, 22.0f}, hpRatio,
             sf::Color(196, 70, 60), sf::Color(60, 40, 40));
+    drawBar(window, {58.0f, 118.0f}, {300.0f, 22.0f}, blockRatio,
+            sf::Color(186, 190, 198), sf::Color(66, 68, 74));
+
+    if (font_ != nullptr)
+    {
+        sf::Text hpLabel = UiHelpers::makeText(
+            *font_, "生命 " + std::to_string(player.getCurrentHealth()) + "/" +
+                        std::to_string(player.getMaxHealth()), 15,
+            sf::Color(255, 245, 238));
+        hpLabel.setPosition({66.0f, 91.0f});
+        window.draw(hpLabel);
+
+        sf::Text blockLabel = UiHelpers::makeText(
+            *font_, "护盾 " + std::to_string(player.getBlock()), 15,
+            sf::Color(28, 30, 34));
+        blockLabel.setPosition({66.0f, 119.0f});
+        window.draw(blockLabel);
+    }
 }
 
-void BattleView::drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy) const
+void BattleView::drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy,
+                                int displayedIntentDamage) const
 {
-    sf::RectangleShape panel({380.0f, 150.0f});
-    panel.setPosition({kWindowWidth - 420.0f, 40.0f});
-    panel.setFillColor(sf::Color(48, 52, 58));
-    panel.setOutlineColor(sf::Color(40, 32, 26));
-    panel.setOutlineThickness(2.0f);
-    window.draw(panel);
-
     const float maxHealth = static_cast<float>(enemy.getMaxHealth());
     const float currentHealth = static_cast<float>(enemy.getCurrentHealth());
 
@@ -897,31 +1092,51 @@ void BattleView::drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy) co
         title.setPosition({kWindowWidth - 402.0f, 52.0f});
         window.draw(title);
 
-        sf::Text hpText =
-            UiHelpers::makeText(*font_, "HP " + std::to_string(enemy.getCurrentHealth()) +
-                                             "/" + std::to_string(enemy.getMaxHealth()),
-                                18, sf::Color(222, 210, 190));
-        hpText.setPosition({kWindowWidth - 402.0f, 92.0f});
-        window.draw(hpText);
-
+        const EnemyIntent& intent = enemy.getIntent();
+        std::string intentLabel = "意图 " + intent.name + "（" + intentCategory(intent) + "）";
+        if (displayedIntentDamage > 0)
+        {
+            intentLabel += " " + std::to_string(displayedIntentDamage);
+        }
         sf::Text intentText =
-            UiHelpers::makeText(*font_, "意图 " + std::to_string(enemy.getIntentDamage()), 18,
-                                sf::Color(230, 120, 110));
-        intentText.setPosition({kWindowWidth - 402.0f, 140.0f});
+            UiHelpers::makeText(*font_, intentLabel, 18, sf::Color(230, 120, 110));
+        intentText.setPosition({kWindowWidth - 402.0f, 148.0f});
         window.draw(intentText);
 
-        const std::string status = "力量 " + std::to_string(enemy.getStrength()) +
+        const std::string status = "格挡 " + std::to_string(enemy.getBlock()) +
+                                   "  力量 " + std::to_string(enemy.getStrength()) +
                                    "  虚弱 " + std::to_string(enemy.getWeak()) +
                                    "  易伤 " + std::to_string(enemy.getVulnerable());
         sf::Text statusText = UiHelpers::makeText(*font_, status, 15,
                                                    sf::Color(190, 190, 200));
-        statusText.setPosition({kWindowWidth - 285.0f, 143.0f});
+        statusText.setPosition({kWindowWidth - 402.0f, 176.0f});
         window.draw(statusText);
     }
 
     const float hpRatio = maxHealth > 0.0f ? currentHealth / maxHealth : 0.0f;
-    drawBar(window, {kWindowWidth - 402.0f, 122.0f}, {180.0f, 16.0f}, hpRatio,
+    const float blockRatio = maxHealth > 0.0f
+                                 ? static_cast<float>(enemy.getBlock()) / maxHealth
+                                 : 0.0f;
+    drawBar(window, {kWindowWidth - 402.0f, 90.0f}, {300.0f, 22.0f}, hpRatio,
             sf::Color(196, 70, 60), sf::Color(60, 40, 40));
+    drawBar(window, {kWindowWidth - 402.0f, 118.0f}, {300.0f, 22.0f}, blockRatio,
+            sf::Color(186, 190, 198), sf::Color(66, 68, 74));
+
+    if (font_ != nullptr)
+    {
+        sf::Text hpLabel = UiHelpers::makeText(
+            *font_, "生命 " + std::to_string(enemy.getCurrentHealth()) + "/" +
+                        std::to_string(enemy.getMaxHealth()), 15,
+            sf::Color(255, 245, 238));
+        hpLabel.setPosition({kWindowWidth - 394.0f, 91.0f});
+        window.draw(hpLabel);
+
+        sf::Text blockLabel = UiHelpers::makeText(
+            *font_, "护盾 " + std::to_string(enemy.getBlock()), 15,
+            sf::Color(28, 30, 34));
+        blockLabel.setPosition({kWindowWidth - 394.0f, 119.0f});
+        window.draw(blockLabel);
+    }
 }
 
 void BattleView::drawHand(sf::RenderWindow& window, const std::vector<Card>& hand) const
@@ -1031,9 +1246,10 @@ void BattleView::drawEndTurnButton(sf::RenderWindow& window) const
 
     sf::RectangleShape button({bounds.size.x, bounds.size.y});
     button.setPosition(bounds.position);
-    button.setFillColor(sf::Color(230, 174, 72));
+    button.setFillColor(endTurnHovered_ ? sf::Color(245, 193, 84)
+                                        : sf::Color(230, 174, 72));
     button.setOutlineColor(sf::Color(36, 28, 18));
-    button.setOutlineThickness(3.0f);
+    button.setOutlineThickness(endTurnHovered_ ? 4.0f : 3.0f);
     window.draw(button);
 
     if (font_ != nullptr)

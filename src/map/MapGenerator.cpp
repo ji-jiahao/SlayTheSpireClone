@@ -10,6 +10,19 @@ namespace
 constexpr int kMaxOutgoingConnectionCount = 3;
 constexpr int kMaxTripleConnectionNodeCount = 2;
 constexpr int kMaxShopCountPerPath = 2;
+// 前两层保留基础战斗，中段固定安排商店和随机事件，保证路线节奏稳定。
+constexpr int kGuaranteedBattleRowCount = 2;
+constexpr int kGuaranteedShopRow = 2;
+
+bool isProtectedBattleRow(int row)
+{
+    return row == 0 || row == 1 || row == 4 || row == 5;
+}
+
+bool isGuaranteedShopRow(int row, int rowCount)
+{
+    return rowCount > kGuaranteedShopRow + 2 && row == kGuaranteedShopRow;
+}
 
 struct NodeTypeAllocation
 {
@@ -339,10 +352,13 @@ void rebalanceBattleEventRatio(std::vector<MapNode>& nodeList,
 
     std::vector<int> battleCandidates;
     std::vector<int> eventCandidates;
+    std::vector<int> shopCandidates;
     for (std::size_t index = 0; index < nodeList.size(); ++index)
     {
         const MapNode& node = nodeList[index];
-        if (node.row == 0 || node.row == maxRow || node.row == maxRow - 1)
+        if (isProtectedBattleRow(node.row) || isGuaranteedShopRow(node.row, maxRow + 1) ||
+            node.row == maxRow ||
+            node.row == maxRow - 1)
         {
             continue;
         }
@@ -354,6 +370,10 @@ void rebalanceBattleEventRatio(std::vector<MapNode>& nodeList,
         else if (node.type == MapNodeType::Event)
         {
             eventCandidates.push_back(static_cast<int>(index));
+        }
+        else if (node.type == MapNodeType::Shop)
+        {
+            shopCandidates.push_back(static_cast<int>(index));
         }
     }
 
@@ -368,6 +388,15 @@ void rebalanceBattleEventRatio(std::vector<MapNode>& nodeList,
     };
 
     TypeCount count = countNodeTypes(nodeList);
+    while (count.battleCount > count.eventCount * 5 && !shopCandidates.empty())
+    {
+        const int nodeIndex = chooseIndex(shopCandidates);
+        nodeList[nodeIndex].type = MapNodeType::Event;
+        --count.shopCount;
+        ++count.eventCount;
+        eventCandidates.push_back(nodeIndex);
+    }
+
     while (count.eventCount > 0 && count.battleCount > count.eventCount * 5 &&
            !battleCandidates.empty())
     {
@@ -467,17 +496,16 @@ std::vector<MapNode> MapGenerator::generateMap(int rowCount)
     std::random_device randomDevice;
     std::mt19937 randomEngine(randomDevice());
     int globalNodeId = 0;
-    std::vector<int> forcedBattleIndexes;
-    std::vector<int> normalNodeIndexes;
+    const int branchCount = rowCount > 1
+                                ? std::uniform_int_distribution<int>(2, 4)(randomEngine)
+                                : 1;
+    const int eventRow = rowCount > 6
+                             ? std::uniform_int_distribution<int>(3, 4)(randomEngine)
+                             : -1;
 
     for (int row = 0; row < rowCount; ++row)
     {
-        int nodeAmount = 1;
-        if (row < rowCount - 1)
-        {
-            std::uniform_int_distribution<int> nodeAmountDistribution(2, 4);
-            nodeAmount = nodeAmountDistribution(randomEngine);
-        }
+        const int nodeAmount = row == rowCount - 1 ? 1 : branchCount;
 
         for (int column = 0; column < nodeAmount; ++column)
         {
@@ -494,29 +522,24 @@ std::vector<MapNode> MapGenerator::generateMap(int rowCount)
             {
                 node.type = MapNodeType::Rest;
             }
+            else if (isGuaranteedShopRow(row, rowCount))
+            {
+                node.type = MapNodeType::Shop;
+            }
+            else if (row == eventRow)
+            {
+                node.type = MapNodeType::Event;
+            }
             else
             {
-                if (row == 0)
-                {
-                    node.type = MapNodeType::Battle;
-                    forcedBattleIndexes.push_back(static_cast<int>(nodeList.size()));
-                }
-                else
-                {
-                    node.type = MapNodeType::Battle;
-                    normalNodeIndexes.push_back(static_cast<int>(nodeList.size()));
-                }
+                node.type = MapNodeType::Battle;
             }
 
             nodeList.push_back(node);
         }
     }
 
-    assignNodeTypes(nodeList, forcedBattleIndexes, normalNodeIndexes,
-                    randomEngine);
     connectRows(nodeList, rowCount, randomEngine);
-    eliminateAdjacentShops(nodeList);
-    rebalanceBattleEventRatio(nodeList, randomEngine);
     assignBarycentricColumns(nodeList, rowCount, randomEngine);
 
     return nodeList;

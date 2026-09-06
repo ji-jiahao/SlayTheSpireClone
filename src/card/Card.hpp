@@ -74,6 +74,10 @@ struct Card
     int upgradedCost = -1;
     std::string upgradedDescription;
     std::vector<CardEffect> upgradedEffects;
+    bool upgraded = false;
+    int upgradeLevel = 0;
+
+    bool upgrade();
 };
 
 struct CardInstance

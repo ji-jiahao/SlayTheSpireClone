@@ -10,6 +10,12 @@ int main()
     {
         GameState state;
         assert(state.gold == 0);
+        const std::size_t deckSizeBeforeReward = state.deck.size();
+        state.gainGold(50);
+        state.addCard("strike");
+        assert(state.gold == 50);
+        assert(state.deck.size() == deckSizeBeforeReward + 1);
+
         state.currentHealth = 40;
         RestSystem restSystem;
         const int healed = restSystem.rest(state);
@@ -24,12 +30,16 @@ int main()
     {
         GameState state;
         state.gold = 999;
-        RelicSystem relicSystem;
         ShopSystem shopSystem;
         shopSystem.open(state.seed, 7);
 
-        assert(shopSystem.getCardOffers().size() == 6);
-        assert(!shopSystem.getRelicOffers().empty());
+        assert(shopSystem.getCardOffers().size() == 8);
+        for (const ShopCardOffer& offer : shopSystem.getCardOffers())
+        {
+            assert(offer.price >= 30 && offer.price <= 70);
+        }
+        assert(shopSystem.getRemoveCardPrice() >= 30 &&
+               shopSystem.getRemoveCardPrice() <= 70);
 
         const int oldDeckSize = static_cast<int>(state.deck.size());
         const int cardPrice = shopSystem.getCardOffers()[0].price;
@@ -37,22 +47,6 @@ int main()
         assert(static_cast<int>(state.deck.size()) == oldDeckSize + 1);
         assert(state.gold == 999 - cardPrice);
         assert(!shopSystem.buyCard(0, state));
-
-        const int goldBeforeRelic = state.gold;
-        const int relicPrice = shopSystem.getRelicOffers()[0].price;
-        const std::string relicId = shopSystem.getRelicOffers()[0].relic.id;
-        assert(shopSystem.buyRelic(0, state, relicSystem));
-        assert(state.gold == goldBeforeRelic - relicPrice);
-        assert(state.hasVisitedEvent("") == false);
-        bool hasRelic = false;
-        for (const std::string& ownedId : state.relicIds)
-        {
-            if (ownedId == relicId)
-            {
-                hasRelic = true;
-            }
-        }
-        assert(hasRelic);
 
         const int goldBeforeRemove = state.gold;
         const int deckSizeBeforeRemove = static_cast<int>(state.deck.size());

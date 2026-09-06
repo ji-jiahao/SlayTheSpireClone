@@ -1,61 +1,93 @@
 #include "ui/CardView.hpp"
 #include "ui/UiHelpers.hpp"
 
-#include <array>
 #include <string>
-#include <vector>
+#include <unordered_map>
 
 namespace
 {
 constexpr float kCardWidth = 160.0f;
 constexpr float kCardHeight = 220.0f;
 constexpr float kOutlineThickness = 4.0f;
+constexpr const char* kCardArtDirectory = "assets/images/cards/pixel_v2/";
 constexpr const char* kStarterCardArtPath = "assets/images/cards/starter_placeholder.png";
 constexpr const char* kUncommonCardArtPath = "assets/images/cards/uncommon_placeholder.png";
 constexpr const char* kRareCardArtPath = "assets/images/cards/rare_placeholder.png";
 
 struct CardArtCache
 {
+    // 卡面按卡牌 ID 缓存，确保同名但不同逻辑的卡牌也能正确区分。
+    std::unordered_map<std::string, sf::Texture> cards;
     sf::Texture starter;
     sf::Texture uncommon;
     sf::Texture rare;
-    bool loaded = false;
+    bool starterLoaded = false;
+    bool uncommonLoaded = false;
+    bool rareLoaded = false;
 };
 
 CardArtCache& cardArtCache()
 {
     static CardArtCache cache;
-    if (!cache.loaded)
-    {
-        const bool starterLoaded = cache.starter.loadFromFile(kStarterCardArtPath);
-        const bool uncommonLoaded = cache.uncommon.loadFromFile(kUncommonCardArtPath);
-        const bool rareLoaded = cache.rare.loadFromFile(kRareCardArtPath);
-        (void)starterLoaded;
-        (void)uncommonLoaded;
-        (void)rareLoaded;
-        cache.loaded = true;
-    }
     return cache;
 }
 
-const sf::Texture* textureForRarity(CardRarity rarity)
+const sf::Texture* textureForCard(const Card& card)
 {
-    const CardArtCache& cache = cardArtCache();
-    switch (rarity)
+    CardArtCache& cache = cardArtCache();
+    const auto cardIt = cache.cards.find(card.id);
+    if (cardIt != cache.cards.end())
+    {
+        return cardIt->second.getSize().x > 0 ? &cardIt->second : nullptr;
+    }
+
+    // 只在卡牌真正出现在画面上时读取对应资源，并缓存失败结果，避免每帧重复访问磁盘。
+    sf::Texture texture;
+    const bool cardLoaded =
+        texture.loadFromFile(std::string(kCardArtDirectory) + card.id + ".png");
+    (void)cardLoaded;
+    const auto [it, inserted] = cache.cards.emplace(card.id, std::move(texture));
+    (void)inserted;
+    if (it->second.getSize().x > 0)
+    {
+        return &it->second;
+    }
+
+    sf::Texture* fallback = nullptr;
+    const char* fallbackPath = nullptr;
+    bool* fallbackLoaded = nullptr;
+    switch (card.rarity)
     {
     case CardRarity::Starter:
     case CardRarity::Common:
-        return cache.starter.getSize().x > 0 ? &cache.starter : nullptr;
+        fallback = &cache.starter;
+        fallbackPath = kStarterCardArtPath;
+        fallbackLoaded = &cache.starterLoaded;
+        break;
     case CardRarity::Uncommon:
-        return cache.uncommon.getSize().x > 0 ? &cache.uncommon : nullptr;
+        fallback = &cache.uncommon;
+        fallbackPath = kUncommonCardArtPath;
+        fallbackLoaded = &cache.uncommonLoaded;
+        break;
     case CardRarity::Rare:
-        return cache.rare.getSize().x > 0 ? &cache.rare : nullptr;
+        fallback = &cache.rare;
+        fallbackPath = kRareCardArtPath;
+        fallbackLoaded = &cache.rareLoaded;
+        break;
     case CardRarity::Status:
     case CardRarity::Curse:
-        return cache.starter.getSize().x > 0 ? &cache.starter : nullptr;
+        // 状态牌和诅咒牌使用 CardView 的文字/几何卡面，不能套用普通牌占位图。
+        return nullptr;
     }
 
-    return nullptr;
+    if (!*fallbackLoaded)
+    {
+        *fallbackLoaded = true;
+        const bool loaded = fallback->loadFromFile(fallbackPath);
+        (void)loaded;
+    }
+
+    return fallback->getSize().x > 0 ? fallback : nullptr;
 }
 } // namespace
 
@@ -114,7 +146,7 @@ sf::Color CardView::colorForType(CardType type) const
 
 void CardView::draw(sf::RenderTarget& target, const Card& card) const
 {
-    if (const sf::Texture* texture = textureForRarity(card.rarity); texture != nullptr)
+    if (const sf::Texture* texture = textureForCard(card); texture != nullptr)
     {
         sf::Sprite sprite(*texture);
         const sf::Vector2u textureSize = texture->getSize();
@@ -141,7 +173,7 @@ void CardView::draw(sf::RenderTarget& target, const Card& card) const
     }
 
     // 费用：左上角圆形。
-    if (card.cost > 0)
+    if (card.cost > 0 || card.cost == -1)
     {
         const float radius = 22.0f;
         sf::CircleShape costCircle(radius, 24);
@@ -150,7 +182,8 @@ void CardView::draw(sf::RenderTarget& target, const Card& card) const
         costCircle.setFillColor(sf::Color(246, 240, 224));
         target.draw(costCircle);
 
-        sf::Text costText = UiHelpers::makeText(*font_, std::to_string(card.cost), 22,
+        const std::string costLabel = card.cost == -1 ? "X" : std::to_string(card.cost);
+        sf::Text costText = UiHelpers::makeText(*font_, costLabel, 22,
                                                 sf::Color(40, 32, 26));
         const sf::FloatRect costBounds = costText.getLocalBounds();
         costText.setPosition(
