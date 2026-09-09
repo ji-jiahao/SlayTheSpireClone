@@ -57,6 +57,8 @@ constexpr float kMapNodeSpacingX = 250.0f;
 constexpr float kMapNodeSize = 72.0f;
 constexpr float kMapScrollStep = 90.0f;
 constexpr float kBelialFadeSeconds = 1.8f;
+constexpr float kSceneFadeOutSeconds = 0.35f;
+constexpr float kSceneFadeInSeconds = 0.35f;
 constexpr float kBelialDefeatMessageSeconds = 1.2f;
 constexpr float kBelialChargeSeconds = 7.0f;
 constexpr float kBelialLightSeconds = 1.35f;
@@ -397,6 +399,11 @@ void Game::handleWindowEvent(const sf::Event& event)
         return;
     }
 
+    if (sceneFadeActive_)
+    {
+        return;
+    }
+
     if (const auto* key = event.getIf<sf::Event::KeyPressed>())
     {
         if (scene == SceneType::BelialIntro)
@@ -656,6 +663,12 @@ void Game::handleMapMouseClick(sf::Vector2f mousePosition)
 
 void Game::update(float deltaSeconds)
 {
+    if (sceneFadeActive_)
+    {
+        updateSceneTransition(deltaSeconds);
+        return;
+    }
+
     if (scene == SceneType::Menu)
     {
         mainMenuView.update(deltaSeconds);
@@ -682,7 +695,7 @@ void Game::update(float deltaSeconds)
 
     if (scene == SceneType::Battle)
     {
-        battleView.update(deltaSeconds);
+        battleView.update(deltaSeconds, combat);
         if (belialTransitionState_ != BelialTransitionState::Inactive)
         {
             updateBelialTransition(deltaSeconds);
@@ -767,6 +780,8 @@ void Game::render()
         drawEndingSequence();
         break;
     }
+
+    drawSceneTransitionOverlay();
 
     window.display();
 }
@@ -874,7 +889,7 @@ void Game::startNewRun()
     mapNodes = generator.generateMap(8);
     mapScrollOffset_ = getMaxMapScrollOffset();
 
-    scene = SceneType::Map;
+    requestSceneChange(SceneType::Map);
     state.currentNodeId = -1;
     playMusic(kMapMusicPath, true);
     window.setTitle("东南苦行塔 - 地图");
@@ -931,7 +946,7 @@ void Game::startBattle(bool preserveRetryState)
         return;
     }
 
-    scene = SceneType::Battle;
+    requestSceneChange(SceneType::Battle);
     window.setTitle("Slay the Spire Clone - 战斗");
 }
 
@@ -956,7 +971,7 @@ bool Game::startEvent(const std::string& eventId)
     }
 
     eventView.enterCurrentState(eventSystem);
-    scene = SceneType::Event;
+    requestSceneChange(SceneType::Event);
     stopMusic();
     window.setTitle("Slay the Spire Clone - 事件");
     return true;
@@ -967,7 +982,7 @@ void Game::startRestRoom()
     restedInCurrentRoom = false;
     removingCardInShop = false;
     statusMessage.clear();
-    scene = SceneType::Rest;
+    requestSceneChange(SceneType::Rest);
     playMusic(kRestMusicPath, true);
     window.setTitle("Slay the Spire Clone - 篝火");
 }
@@ -979,14 +994,14 @@ void Game::startShopRoom()
     statusMessage.clear();
     shopSystem.open(state.seed, state.currentNodeId);
     shopView.resetDialogue(state.seed ^ static_cast<unsigned int>(state.currentNodeId + 4096));
-    scene = SceneType::Shop;
+    requestSceneChange(SceneType::Shop);
     playMusic(kMerchantMusicPath, true);
     window.setTitle("Slay the Spire Clone - 商店");
 }
 
 void Game::showMap()
 {
-    scene = SceneType::Map;
+    requestSceneChange(SceneType::Map);
     statusMessage = "已返回地图。";
     playMusic(kMapMusicPath, true);
     window.setTitle("Slay the Spire Clone - 地图");
@@ -994,9 +1009,55 @@ void Game::showMap()
 
 void Game::showGameOver()
 {
-    scene = SceneType::GameOver;
+    requestSceneChange(SceneType::GameOver);
     playMusic(kFailureMusicPath, false);
     window.setTitle("Slay the Spire Clone - 游戏结束");
+}
+
+void Game::requestSceneChange(SceneType target)
+{
+    pendingScene_ = target;
+    sceneFadePhase_ = false;
+    sceneFadeTimer_ = 0.0f;
+    sceneFadeActive_ = true;
+}
+
+void Game::updateSceneTransition(float deltaSeconds)
+{
+    sceneFadeTimer_ += std::max(0.0f, deltaSeconds);
+    const float duration = sceneFadePhase_ ? kSceneFadeInSeconds : kSceneFadeOutSeconds;
+    if (sceneFadeTimer_ < duration)
+    {
+        return;
+    }
+
+    if (!sceneFadePhase_)
+    {
+        scene = pendingScene_;
+        sceneFadePhase_ = true;
+        sceneFadeTimer_ = 0.0f;
+    }
+    else
+    {
+        sceneFadeActive_ = false;
+    }
+}
+
+void Game::drawSceneTransitionOverlay()
+{
+    if (!sceneFadeActive_)
+    {
+        return;
+    }
+
+    const float duration = sceneFadePhase_ ? kSceneFadeInSeconds : kSceneFadeOutSeconds;
+    const float progress = std::clamp(sceneFadeTimer_ / duration, 0.0f, 1.0f);
+    const float alpha01 = sceneFadePhase_ ? (1.0f - progress) : progress;
+    sf::RectangleShape overlay({static_cast<float>(kWindowWidth),
+                                static_cast<float>(kWindowHeight)});
+    overlay.setFillColor(sf::Color(0, 0, 0,
+                                   static_cast<std::uint8_t>(255.0f * alpha01)));
+    window.draw(overlay);
 }
 
 void Game::finishBelialIntro()
@@ -1122,7 +1183,7 @@ void Game::retryCurrentBattle()
     belialChargeSound_.stop();
     stopMusic();
     mainMenuView.resetFade();
-    scene = SceneType::Menu;
+    requestSceneChange(SceneType::Menu);
     playMusic(kMenuMusicPath, true);
     window.setTitle("东南苦行塔 - 主菜单");
 }

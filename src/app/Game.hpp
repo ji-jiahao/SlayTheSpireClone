@@ -60,6 +60,9 @@ private:
     void startShopRoom();
     void showMap();
     void showGameOver();
+    void requestSceneChange(SceneType target);
+    void updateSceneTransition(float deltaSeconds);
+    void drawSceneTransitionOverlay();
     void finishBelialIntro();
     void startEndingSequence();
     void handleBattleResult();
@@ -116,6 +119,10 @@ private:
     EventView eventView;
     sf::Clock clock;
     SceneType scene;
+    SceneType pendingScene_ = SceneType::Menu;
+    bool sceneFadeActive_ = false;
+    bool sceneFadePhase_ = false; // false: 淡出旧场景；true: 淡入新场景
+    float sceneFadeTimer_ = 0.0f;
     BattleResult handledResult;
     int relicHealing;
     bool restedInCurrentRoom = false;
