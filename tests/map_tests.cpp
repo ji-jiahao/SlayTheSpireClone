@@ -160,6 +160,28 @@ void verifyGeneratedMap(const std::vector<MapNode>& nodes)
             "当前地图节奏应保持四层战斗对应一层事件");
 
     const auto nodeLookup = buildNodeLookup(nodes);
+    for (const auto& node : nodes)
+    {
+        if (node.row > 0)
+            require(std::any_of(nodes.begin(),nodes.end(),[&](const auto& parent) {
+                return std::find(parent.nextNodeIds.begin(),parent.nextNodeIds.end(),node.id) != parent.nextNodeIds.end();
+            }), "每个节点都必须能从下面到达");
+        for (int target : node.nextNodeIds)
+        {
+            const auto& dest = *nodeLookup.at(target);
+            if (dest.type != MapNodeType::Boss)
+                require(std::abs(node.column-dest.column) <= 1, "不能跨越相邻列连接远处节点");
+            for (const auto& other : nodes)
+                if (other.row == node.row && other.column > node.column)
+                    for (int otherTarget : other.nextNodeIds)
+                        require(dest.column <= nodeLookup.at(otherTarget)->column,
+                                "任意两条边都不能交叉");
+        }
+        if (node.row < maxRow - 1)
+            require(std::any_of(node.nextNodeIds.begin(),node.nextNodeIds.end(),[&](int id) {
+                return nodeLookup.at(id)->column == node.column;
+            }), "必须保留通往正上方最近节点的连接");
+    }
     for (const MapNode* startNode : startNodes)
     {
         verifyShopLimitOnPath(*startNode, nodeLookup, 0);
@@ -177,9 +199,9 @@ int main()
         int earlyServiceCount = 0;
         int earlyShopOrEventMaps = 0;
 
-        for (int index = 0; index < 200; ++index)
+        for (int index = 0; index < 2000; ++index)
         {
-            const std::vector<MapNode> nodes = generator.generateMap(8);
+            const std::vector<MapNode> nodes = generator.generateMap(8, index);
             verifyGeneratedMap(nodes);
             bool hasEarlyService = false;
             for (const MapNode& node : nodes)

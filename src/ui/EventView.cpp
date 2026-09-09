@@ -1,4 +1,5 @@
 #include "ui/EventView.hpp"
+#include "ui/UiHelpers.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -369,28 +370,47 @@ void EventView::draw(sf::RenderWindow& window, const EventSystem& eventSystem,
 
         if (leftIt != textures_.end())
         {
-            sf::CircleShape logo(logoRadius, 72);
-            logo.setTexture(&leftIt->second);
-            logo.setPosition({leftCenterX - logoRadius, logoCenterY - logoRadius});
-            logo.setOutlineThickness(4.0f);
-            logo.setOutlineColor(sf::Color(237, 207, 92));
+            // Draw the entire source image, preserving its aspect ratio.
+            const sf::FloatRect frame({leftCenterX - logoRadius, logoCenterY - logoRadius},
+                                       {logoRadius * 2.0f, logoRadius * 2.0f});
+            drawRoundedBox(window, frame, 10.0f, sf::Color(250, 248, 242),
+                           sf::Color(237, 207, 92), 3.0f);
+            sf::Sprite logo(leftIt->second);
+            const auto size = leftIt->second.getSize();
+            const float scale = (frame.size.x - 16.0f) / std::max(size.x, size.y);
+            logo.setScale({scale, scale});
+            logo.setPosition({leftCenterX - size.x * scale / 2.0f,
+                              logoCenterY - size.y * scale / 2.0f});
             window.draw(logo);
         }
 
         if (rightIt != textures_.end())
         {
-            sf::CircleShape logo(logoRadius, 72);
-            logo.setTexture(&rightIt->second);
-            logo.setPosition({rightCenterX - logoRadius, logoCenterY - logoRadius});
-            logo.setOutlineThickness(4.0f);
-            logo.setOutlineColor(sf::Color(157, 82, 168));
+            const sf::FloatRect frame({rightCenterX - logoRadius, logoCenterY - logoRadius},
+                                       {logoRadius * 2.0f, logoRadius * 2.0f});
+            drawRoundedBox(window, frame, 10.0f, sf::Color(250, 248, 242),
+                           sf::Color(157, 82, 168), 3.0f);
+            sf::Sprite logo(rightIt->second);
+            const auto size = rightIt->second.getSize();
+            const float scale = (frame.size.x - 16.0f) / std::max(size.x, size.y);
+            logo.setScale({scale, scale});
+            logo.setPosition({rightCenterX - size.x * scale / 2.0f,
+                              logoCenterY - size.y * scale / 2.0f});
             window.draw(logo);
         }
     }
 
     if (state.closeOnClick)
     {
-        sf::Text resultText = makeText(font_, state.text, 28, sf::Color(242, 239, 230));
+        const auto lines = UiHelpers::wrapText(font_, state.text, 28,
+                                               std::min(900.0f, width * 0.8f));
+        std::string wrapped;
+        for (std::size_t index = 0; index < lines.size(); ++index)
+        {
+            if (index > 0) wrapped += '\n';
+            wrapped += lines[index];
+        }
+        sf::Text resultText = makeText(font_, wrapped, 28, sf::Color(242, 239, 230));
         centerTextOrigin(resultText);
         resultText.setPosition({width / 2.0f, height / 2.0f});
         resultText.setOutlineThickness(2.0f);
@@ -438,6 +458,18 @@ void EventView::draw(sf::RenderWindow& window, const EventSystem& eventSystem,
 
         const EventOption& option =
             eventSystem.getCurrentEvent().options[button.optionIndex];
+        const auto lineBreak = option.text.find('\n');
+        if (isChoiceBannerState(state) && lineBreak != std::string::npos)
+        {
+            UiHelpers::drawCenteredText(window, font_, option.text.substr(0, lineBreak),
+                                        23, {button.bounds.position, {button.bounds.size.x, 38.0f}},
+                                        sf::Color(24, 19, 14));
+            UiHelpers::drawCenteredText(window, font_, option.text.substr(lineBreak + 1),
+                                        18, {{button.bounds.position.x, button.bounds.position.y + 39.0f},
+                                             {button.bounds.size.x, 28.0f}},
+                                        sf::Color(57, 43, 23));
+            continue;
+        }
         sf::Text label = makeText(font_, option.text, 23, sf::Color(24, 19, 14));
         const sf::FloatRect textBounds = label.getLocalBounds();
         label.setPosition({button.bounds.position.x +
@@ -498,8 +530,8 @@ std::vector<EventView::OptionButton> EventView::layoutButtons(
     const float height = static_cast<float>(windowSize.y);
     const EventState& state = getCurrentState(eventSystem);
     const bool bannerState = isChoiceBannerState(state);
-    const float buttonWidth = bannerState ? 380.0f : width * 0.39f;
-    const float buttonHeight = bannerState ? 66.0f : 72.0f;
+    const float buttonWidth = bannerState ? std::min(460.0f, width * 0.8f) : width * 0.39f;
+    const float buttonHeight = bannerState ? 76.0f : 72.0f;
     const float gap = 18.0f;
     const float startX = bannerState ? (width - buttonWidth) / 2.0f : width * 0.52f;
     const float startY = bannerState ? height * 0.60f : height * 0.46f;

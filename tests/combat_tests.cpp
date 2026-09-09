@@ -1,5 +1,6 @@
 #include "card/CardDatabase.hpp"
 #include "combat/CombatSystem.hpp"
+#include "ui/CardPresentation.hpp"
 
 #include <cassert>
 #include <iostream>
@@ -42,6 +43,92 @@ bool pileContains(const std::vector<Card>& cards, const std::string& id)
 
 int main()
 {
+    {
+        // 本项目约定：打出的能力牌进入本场战斗的消耗牌堆。
+        std::vector<Card> cards = {CardDatabase::createById("inflame"),
+                                   CardDatabase::createStrike(), CardDatabase::createStrike(),
+                                   CardDatabase::createDefend(), CardDatabase::createDefend()};
+        CombatSystem combat;
+        combat.startBattle(80, 7, cards);
+        const int index = findCard(combat, "inflame");
+        assert(index >= 0);
+        assert(combat.playCard(index));
+        assert(!pileContains(combat.getDeck().getDiscardPile(), "inflame"));
+        assert(pileContains(combat.getDeck().getExhaustPile(), "inflame"));
+        assert(combat.getHandCards().size() == 4);
+        assert(combat.getDeck().getExhaustPile().size() == 1);
+        assert(combat.getPlayer().getStrength() == 2);
+        combat.endPlayerTurn();
+        assert(!pileContains(combat.getHandCards(), "inflame"));
+        assert(!pileContains(combat.getDeck().getDrawPile(), "inflame"));
+        assert(combat.getDeck().getExhaustPile().size() == 1);
+        assert(combat.getPlayer().getStrength() == 2);
+    }
+
+    {
+        Card power = CardDatabase::createById("inflame");
+        power.effects.push_back({CardEffectType::Exhaust, 1, CardTarget::Self, {}});
+        CombatSystem combat;
+        combat.startBattle(80, 7, {power});
+        assert(combat.playCard(0));
+        assert(combat.getHandCards().empty());
+        assert(combat.getDeck().getExhaustPile().size() == 1);
+        assert(combat.getDeck().getDiscardPile().empty());
+        assert(combat.getPlayer().getStrength() == 2);
+    }
+
+    {
+        // Discounted copies must display the actual price without mutating the deck.
+        CombatSystem combat;
+        combat.startBattle(80, 8, {CardDatabase::createById("corruption"),
+                                  CardDatabase::createDefend(), CardDatabase::createStrike()});
+        const auto originalDefend = CardDatabase::createDefend();
+        assert(CardPresentation::forCombat(originalDefend, combat).cost == 1);
+        assert(combat.playCard(findCard(combat, "corruption")));
+        const auto& actual = combat.getHandCards()[findCard(combat, "defend")];
+        assert(CardPresentation::forCombat(actual, combat).cost == 0);
+        assert(actual.cost == 1);
+        const int energy = combat.getPlayer().getCurrentEnergy();
+        assert(combat.playCard(findCard(combat, "defend")));
+        assert(combat.getPlayer().getCurrentEnergy() == energy);
+        assert(combat.getDeck().getExhaustPile().size() == 2);
+        assert(CardPresentation::forCombat(combat.getDeck().getExhaustPile().back(), combat).cost == 0);
+        assert(CardPresentation::forCombat(CardDatabase::createStrike(), combat).cost == 1);
+        combat.startBattle(80, 9, {originalDefend});
+        assert(CardPresentation::forCombat(combat.getHandCards()[0], combat).cost == 1);
+    }
+
+    {
+        CombatSystem combat;
+        combat.startBattle(80, 9, {CardDatabase::createById("blood_for_blood"),
+                                  CardDatabase::createById("bloodletting")});
+        assert(combat.playCard(findCard(combat, "bloodletting")));
+        const auto& original = combat.getHandCards()[findCard(combat, "blood_for_blood")];
+        assert(original.cost == 4);
+        assert(CardPresentation::forCombat(original, combat).cost == 3);
+        const int energy = combat.getPlayer().getCurrentEnergy();
+        assert(combat.playCard(findCard(combat, "blood_for_blood")));
+        assert(combat.getPlayer().getCurrentEnergy() == energy - 3);
+    }
+
+    {
+        CombatSystem combat;
+        combat.startBattle(80, 10, {CardDatabase::createById("infernal_blade")});
+        assert(combat.playCard(0));
+        assert(combat.getHandCards().size() == 1);
+        assert(CardPresentation::forCombat(combat.getHandCards()[0], combat).cost == 0);
+        Card upgraded = CardDatabase::createById("havoc");
+        assert(upgraded.upgrade());
+        assert(CardPresentation::forCombat(upgraded, combat).cost == 0);
+        assert(CardPresentation::costLabel(0) == "0");
+        assert(CardPresentation::costLabel(2) == "2");
+        assert(CardPresentation::costLabel(-1) == "X");
+        assert(CardPresentation::costLabel(-2) == "—");
+        assert(CardPresentation::forCombat(CardDatabase::createById("whirlwind"), combat).cost == -1);
+        Card status; status.cost = -2;
+        assert(CardPresentation::forCombat(status, combat).cost == -2);
+    }
+
     {
         CombatSystem combat;
         combat.startBattle(80, 0, fiveCopies(CardDatabase::createStrike()));
@@ -245,8 +332,68 @@ int main()
         combat.startBattle(80, 17, cards);
         assert(combat.playCard(findCard(combat, "strike")));
         assert(combat.playCard(findCard(combat, "headbutt")));
+        assert(combat.hasPendingDiscardChoice());
+        assert(combat.getDiscardChoiceCards().size() == 1);
+        assert(combat.chooseDiscardCard(0));
         assert(!combat.getDeck().getDrawPile().empty());
         assert(combat.getDeck().getDrawPile().back().id == "strike");
+    }
+
+    {
+        // Choose the second discarded instance rather than auto-taking the last.
+        CombatSystem combat;
+        combat.startBattle(80,42,{CardDatabase::createDefend(),CardDatabase::createStrike(),
+            CardDatabase::createById("headbutt"),CardDatabase::createById("pommel_strike")},
+            {"测试",200,0,"generic"},0,0,10);
+        assert(combat.playCard(findCard(combat,"defend")));
+        assert(combat.playCard(findCard(combat,"strike")));
+        assert(combat.playCard(findCard(combat,"headbutt")));
+        assert(combat.getDiscardChoiceCards().size()==2);
+        assert(!combat.chooseDiscardCard(99));
+        const int energy = combat.getPlayer().getCurrentEnergy();
+        combat.endPlayerTurn();
+        assert(combat.getPlayer().getCurrentEnergy()==energy);
+        assert(!combat.playCard(findCard(combat,"pommel_strike")));
+        assert(combat.chooseDiscardCard(0));
+        assert(!combat.hasPendingDiscardChoice());
+        assert(combat.getDeck().getDrawPile().back().id=="defend");
+        assert(combat.playCard(findCard(combat,"pommel_strike")));
+        assert(combat.getHandCards().back().id=="defend");
+        combat.startBattle(80,42,{CardDatabase::createById("headbutt")});
+        assert(combat.playCard(0));
+        assert(!combat.hasPendingDiscardChoice());
+    }
+
+    {
+        // Double Tap queues two picks; same-name instances remain selectable.
+        CombatSystem combat;
+        combat.startBattle(80,42,{CardDatabase::createById("double_tap"),CardDatabase::createStrike(),
+            CardDatabase::createStrike(),CardDatabase::createById("headbutt")},
+            {"测试",200,0,"generic"},0,0,10);
+        assert(combat.playCard(findCard(combat,"strike")));
+        assert(combat.playCard(findCard(combat,"strike")));
+        assert(combat.playCard(findCard(combat,"double_tap")));
+        assert(combat.playCard(findCard(combat,"headbutt")));
+        assert(combat.chooseDiscardCard(0));
+        assert(combat.hasPendingDiscardChoice());
+        assert(combat.reviveFromLastSafeSnapshot());
+        assert(combat.hasPendingDiscardChoice());
+        assert(combat.chooseDiscardCard(0));
+        assert(!combat.hasPendingDiscardChoice());
+        assert(combat.getDeck().getDrawPile().size()==2);
+        assert(combat.getDeck().getDrawPile().back().id=="strike");
+    }
+
+    {
+        CombatSystem combat;
+        combat.startBattle(80,42,{CardDatabase::createDefend(),CardDatabase::createById("headbutt")},
+            {"测试",5,0,"generic"},0,0);
+        assert(combat.playCard(findCard(combat,"defend")));
+        assert(combat.playCard(findCard(combat,"headbutt")));
+        assert(combat.getResult()==BattleResult::Victory);
+        assert(!combat.hasPendingDiscardChoice());
+        combat.startBattle(80,42,{CardDatabase::createById("headbutt")});
+        assert(!combat.hasPendingDiscardChoice());
     }
 
     {
@@ -430,6 +577,32 @@ int main()
         assert(combat.getPlayer().getCurrentHealth() == combat.getPlayer().getMaxHealth());
         assert(combat.getPlayer().getStrength() == 10);
         assert(combat.getPlayer().getDexterity() == 10);
+    }
+
+    {
+        CombatSystem combat;
+        for (int battle = 0; battle < 2; ++battle)
+        {
+            // The combined starting strength includes both relic and event bonuses.
+            combat.startBattle(80, 42 + battle, fiveCopies(CardDatabase::createStrike()),
+                               {"测试敌人", 100, 8, "generic"}, 0, 2 + 1, 0, 0, 80, 1);
+            assert(combat.getPlayer().getStrength() == 3);
+            assert(combat.getEnemy().getWeak() == 1);
+            assert(combat.getEnemyIntentDamage() == 6);
+            assert(combat.reviveFromLastSafeSnapshot());
+            assert(combat.getPlayer().getStrength() == 3);
+            assert(combat.getEnemy().getWeak() == 1);
+            assert(combat.playCard(0));
+            assert(combat.getEnemy().getCurrentHealth() == 91);
+            combat.endPlayerTurn();
+            assert(combat.getPlayer().getCurrentHealth() == 74);
+            assert(combat.getEnemy().getWeak() == 0);
+            assert(combat.getPlayer().getStrength() == 3);
+            assert(combat.getEnemyIntentDamage() == 8);
+        }
+        combat.startBattle();
+        assert(combat.getPlayer().getStrength() == 0);
+        assert(combat.getEnemy().getWeak() == 0);
     }
 
     std::cout << "战斗测试通过。\n";

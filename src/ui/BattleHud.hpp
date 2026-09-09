@@ -9,7 +9,7 @@ public:
     void reset();
     bool isOpen() const { return pile_ >= 0; }
     bool handleMouseMove(sf::Vector2f position);
-    bool handleMouseClick(sf::Vector2f position, const CombatSystem& combat);
+    bool handleMouseClick(sf::Vector2f position, CombatSystem& combat);
     bool handleKeyPress(sf::Keyboard::Key key, const CombatSystem& combat);
     void draw(sf::RenderWindow& window, const sf::Font& font, const CombatSystem& combat) const;
     static void drawStatuses(sf::RenderWindow& window, const sf::Font& font,

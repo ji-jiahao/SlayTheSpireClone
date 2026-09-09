@@ -164,6 +164,12 @@ bool EventSystem::applyEffect(const EventEffect& effect, GameState& gameState)
     case EventEffectType::LoseAllGold:
         gameState.loseAllGold();
         return true;
+    case EventEffectType::GainBattleStartStrength:
+        gameState.battleStartStrength += std::max(0, effect.value);
+        return true;
+    case EventEffectType::GainBattleStartEnemyWeak:
+        gameState.battleStartEnemyWeak += std::max(0, effect.value);
+        return true;
     case EventEffectType::AddCard:
         if (effect.parameter.empty())
         {

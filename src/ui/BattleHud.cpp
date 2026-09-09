@@ -1,6 +1,7 @@
 #include "ui/BattleHud.hpp"
 #include "ui/BattleIcons.hpp"
 #include "ui/CardView.hpp"
+#include "ui/CardPresentation.hpp"
 #include "ui/UiHelpers.hpp"
 
 #include <algorithm>
@@ -91,7 +92,11 @@ bool BattleHud::handleMouseMove(sf::Vector2f p)
 std::vector<Card> BattleHud::cards(const CombatSystem& combat) const
 {
     const auto& d = combat.getDeck();
-    auto result = pile_ == 0 ? d.getDrawPile() : pile_ == 1 ? d.getDiscardPile() : d.getExhaustPile();
+    auto result = combat.hasPendingDiscardChoice() ? combat.getDiscardChoiceCards() :
+        pile_ == 0 ? d.getDrawPile() : pile_ == 1 ? d.getDiscardPile() : d.getExhaustPile();
+    for (auto& card : result) card = CardPresentation::forCombat(card, combat);
+    // Choice indexes must keep the exact order supplied by the combat system.
+    if (combat.hasPendingDiscardChoice()) return result;
     // Browsing must neither reveal the random draw order nor mutate the live deck.
     std::stable_sort(result.begin(), result.end(), [](const Card& a, const Card& b) {
         if (a.id != b.id) return a.id < b.id;
@@ -106,9 +111,23 @@ void BattleHud::changePage(int direction, const CombatSystem& combat)
     page_ = std::clamp(page_ + direction, 0, maxPage);
 }
 
-bool BattleHud::handleMouseClick(sf::Vector2f p, const CombatSystem& combat)
+bool BattleHud::handleMouseClick(sf::Vector2f p, CombatSystem& combat)
 {
     mouse_ = p;
+    if (combat.hasPendingDiscardChoice())
+    {
+        const int size = static_cast<int>(combat.getDiscardChoiceCards().size());
+        page_ = std::clamp(page_, 0, std::max(0, (size - 1) / pageSize));
+        for (int i = 0; i < pageSize && page_ * pageSize + i < size; ++i)
+            if (cardBounds(i).contains(p))
+            {
+                if (combat.chooseDiscardCard(page_ * pageSize + i)) reset();
+                return true;
+            }
+        if (previousButton.contains(p)) changePage(-1, combat);
+        if (nextButton.contains(p)) changePage(1, combat);
+        return true;
+    }
     if (isOpen())
     {
         if (closeButton.contains(p) || !panel.contains(p)) { reset(); return true; }
@@ -126,7 +145,13 @@ bool BattleHud::handleMouseClick(sf::Vector2f p, const CombatSystem& combat)
 
 bool BattleHud::handleKeyPress(sf::Keyboard::Key key, const CombatSystem& combat)
 {
-    if (!isOpen()) return false;
+    if (!isOpen() && !combat.hasPendingDiscardChoice()) return false;
+    if (combat.hasPendingDiscardChoice())
+    {
+        if (key == sf::Keyboard::Key::Left) changePage(-1, combat);
+        else if (key == sf::Keyboard::Key::Right) changePage(1, combat);
+        return true;
+    }
     if (key == sf::Keyboard::Key::Escape) reset();
     else if (key == sf::Keyboard::Key::Left) changePage(-1, combat);
     else if (key == sf::Keyboard::Key::Right) changePage(1, combat);
@@ -159,6 +184,7 @@ void BattleHud::drawIntent(sf::RenderWindow& w, const sf::Font& f, const Enemy& 
 
 void BattleHud::draw(sf::RenderWindow& w, const sf::Font& f, const CombatSystem& combat) const
 {
+    const bool choosing = combat.hasPendingDiscardChoice();
     const auto sizes = counts(combat);
     for (int i = 0; i < 3; ++i)
     {
@@ -171,7 +197,7 @@ void BattleHud::draw(sf::RenderWindow& w, const sf::Font& f, const CombatSystem&
         count.setPosition(r.position+sf::Vector2f{32,27}); w.draw(count);
         UiHelpers::drawCenteredText(w,f,names[i],12,{r.position+sf::Vector2f{0,51},{54,20}},paper);
     }
-    if (!isOpen())
+    if (!isOpen() && !choosing)
     {
         std::string tip;
         sf::Vector2f p;
@@ -197,14 +223,19 @@ void BattleHud::draw(sf::RenderWindow& w, const sf::Font& f, const CombatSystem&
     }
     box(w,{{0,0},{1280,720}},sf::Color(0,0,0,185));
     box(w,panel,sf::Color(22,26,32,253),sf::Color(120,134,144));
-    for (int i = 0; i < 3; ++i)
+    if (choosing)
+    {
+        text(w,f,"头槌 · 选择一张弃牌放到抽牌堆顶",27,{102,56},accent);
+        text(w,f,"点击卡牌确认；之后抽牌时会优先抽到它。",17,{102,96},muted);
+    }
+    for (int i = 0; !choosing && i < 3; ++i)
     {
         const auto r = tabBounds(i);
         box(w,r,pile_ == i ? sf::Color(55,64,72) : sf::Color(29,34,41),pile_ == i ? accent : sf::Color(65,75,85));
         BattleIcons::draw(w,pileIcons[i],r.position+sf::Vector2f{7,5},32);
         text(w,f,std::string(names[i])+"  "+std::to_string(sizes[i]),19,r.position+sf::Vector2f{46,9});
     }
-    symbolButton(w,f,closeButton,"X",mouse_);
+    if (!choosing) symbolButton(w,f,closeButton,"X",mouse_);
     const auto pileCards = cards(combat);
     const int pageCount = std::max(1,(static_cast<int>(pileCards.size())+pageSize-1)/pageSize);
     const int page = std::min(page_,pageCount-1);
@@ -215,7 +246,10 @@ void BattleHud::draw(sf::RenderWindow& w, const sf::Font& f, const CombatSystem&
     {
         const auto r = cardBounds(i);
         if (r.contains(mouse_)) selected = i;
-        CardView card; card.setFont(f); card.setPosition(r.position); card.setScale(0.9f);
+        CardView card; card.setFont(f);
+        // CardView scales about its unscaled centre; align the visible card with
+        // the shared click/highlight rectangle after scaling.
+        card.setPosition(r.position - sf::Vector2f{8,11}); card.setScale(0.9f);
         card.draw(w,pileCards[start+i]);
         fitText(w,f,pileCards[start+i].name,15,r.position+sf::Vector2f{0,202},144);
     }
@@ -225,12 +259,12 @@ void BattleHud::draw(sf::RenderWindow& w, const sf::Font& f, const CombatSystem&
         box(w,r,sf::Color::Transparent,accent);
         const auto& c = pileCards[start+selected];
         fitText(w,f,c.name,23,{995,140},185,accent);
-        text(w,f,c.cost < 0 ? "费用 X" : "费用 "+std::to_string(c.cost),17,{995,184},muted);
+        text(w,f,"费用 " + CardPresentation::costLabel(c.cost),17,{995,184},muted);
         wrappedText(w,f,c.description,{995,230},184);
     }
     else UiHelpers::drawCenteredText(w,f,"牌堆为空",25,{{120,270},{1010,100}},muted);
     symbolButton(w,f,previousButton,"<",mouse_,page > 0);
     symbolButton(w,f,nextButton,">",mouse_,page+1 < pageCount);
     UiHelpers::drawCenteredText(w,f,std::to_string(page+1)+" / "+std::to_string(pageCount),18,{{562,619},{156,38}},paper);
-    fitText(w,f,pile_ == 0 ? "按卡牌名称分组 · 非抽取顺序" : "当前战斗",14,{101,630},375,muted);
+    fitText(w,f,choosing ? "请选择一张牌以继续战斗" : pile_ == 0 ? "按卡牌名称分组 · 非抽取顺序" : "当前战斗",14,{101,630},375,muted);
 }

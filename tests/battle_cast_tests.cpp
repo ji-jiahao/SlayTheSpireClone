@@ -1,5 +1,6 @@
 #include "card/CardDatabase.hpp"
 #include "ui/BattleCast.hpp"
+#include "ui/BattleHud.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -45,6 +46,30 @@ void testLerp()
     require(std::fabs(value.x - 10.0f) < 0.0001f && std::fabs(value.y - 20.0f) < 0.0001f,
             "插值结果应处于中点");
 }
+
+void testHeadbuttPicker()
+{
+    CombatSystem combat;
+    // More than one page of discarded cards, including duplicate names.
+    Card block = CardDatabase::createDefend(); block.cost = 0;
+    std::vector<Card> deck(14,block);
+    deck.push_back(CardDatabase::createById("headbutt"));
+    combat.startBattle(80,7,deck,{"测试",200,0,"generic"},0,0,0,10);
+    for (int i=static_cast<int>(combat.getHandCards().size())-1;i>=0;--i)
+        if(combat.getHandCards()[i].id=="defend") require(combat.playCard(i),"准备弃牌失败");
+    require(combat.playCard(0),"头槌未能打出");
+    require(combat.getDiscardChoiceCards().size()==14,"必须显示所有可选实例");
+    BattleHud hud;
+    require(hud.handleKeyPress(sf::Keyboard::Key::Escape,combat),"Esc必须被选牌框消费");
+    require(combat.hasPendingDiscardChoice(),"Esc不能绕过选牌");
+    require(hud.handleMouseClick({1200,700},combat),"点击背景不能穿透选牌框");
+    require(combat.hasPendingDiscardChoice(),"背景点击不能完成选牌");
+    hud.handleMouseClick({747,638},combat);
+    // Fourth card on page 2 corresponds to the 14th discarded instance.
+    hud.handleMouseClick({640,180},combat);
+    require(!combat.hasPendingDiscardChoice(),"第二页选择未完成");
+    require(combat.getDeck().getDrawPile().back().id=="defend","选中牌没有放到牌堆顶");
+}
 } // namespace
 
 int main()
@@ -54,6 +79,7 @@ int main()
         testTargetResolution();
         testEaseInOutQuad();
         testLerp();
+        testHeadbuttPicker();
         std::cout << "战斗目标选择测试通过。\n";
         return 0;
     }

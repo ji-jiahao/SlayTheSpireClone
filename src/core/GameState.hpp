@@ -12,6 +12,8 @@ struct GameState
     int currentHealth = 80;
     int maxHealth = 80;
     int gold = 0;
+    int battleStartStrength = 0;
+    int battleStartEnemyWeak = 0;
     int currentNodeId = -1;
     unsigned int seed = 20260901;
     std::vector<CardInstance> deck;
@@ -29,6 +31,8 @@ struct GameState
         currentHealth = 80;
         maxHealth = 80;
         gold = 0;
+        battleStartStrength = 0;
+        battleStartEnemyWeak = 0;
         currentNodeId = -1;
         deck.clear();
         for (int index = 0; index < 5; ++index)

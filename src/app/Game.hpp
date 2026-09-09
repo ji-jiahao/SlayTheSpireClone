@@ -90,10 +90,8 @@ private:
     sf::FloatRect battleRewardSkipBounds() const;
     bool loadRestResources();
     bool loadShopResources();
-    bool loadMapIconTextures();
     bool playMusic(const std::string& path, bool looping);
     void stopMusic();
-    const sf::Texture* getMapNodeTexture(MapNodeType type) const;
     bool isMapNodeSelectable(const MapNode& node) const;
     std::vector<Card> buildCombatDeck() const;
     std::vector<MapNodeButton> layoutMapNodes() const;
@@ -131,14 +129,8 @@ private:
     std::string lastError;
     std::vector<MapNode> mapNodes;
     std::vector<Card> battleRewardCards;
-    sf::Texture battleNodeTexture;
-    sf::Texture bossNodeTexture;
-    sf::Texture restNodeTexture;
-    sf::Texture shopNodeTexture;
-    sf::Texture eventNodeTexture;
     sf::Texture menuBackgroundTexture;
     sf::Texture battleBackgroundTexture;
-    sf::Texture mapBackgroundTexture;
     sf::Texture belialIntroBackgroundTexture;
     sf::Texture belialIntroBelialTexture;
     sf::Texture restBackgroundTexture;
@@ -147,10 +139,8 @@ private:
     sf::Music belialIntroSound_;
     sf::Music belialHeartbeatSound_;
     sf::Music belialChargeSound_;
-    bool mapIconsLoaded = false;
     bool menuBackgroundLoaded = false;
     bool battleBackgroundLoaded = false;
-    bool mapBackgroundLoaded = false;
     bool belialIntroBackgroundLoaded = false;
     bool belialIntroBelialLoaded = false;
     bool restBackgroundLoaded = false;

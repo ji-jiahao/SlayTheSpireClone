@@ -1,4 +1,5 @@
 #include "ui/ShopView.hpp"
+#include "ui/CardPresentation.hpp"
 
 #include "card/CardDatabase.hpp"
 #include "ui/BattleHover.hpp"
@@ -415,7 +416,7 @@ void ShopView::updateCardTooltip(const Card& card, const sf::FloatRect& bounds)
                                        cardTooltipPosition_.y + 40.0f});
 
     cardTooltipCostText_->setString(UiHelpers::toSfString(
-        card.cost < 0 ? "X" : std::to_string(card.cost)));
+        CardPresentation::costLabel(card.cost)));
     cardTooltipCostCircle_.setPosition(
         {cardTooltipPosition_.x + cardTooltipSize_.x - 30.0f,
          cardTooltipPosition_.y + 26.0f});
@@ -553,7 +554,7 @@ void ShopView::drawDialogueBubble(sf::RenderWindow& window) const
     }
 
     const auto alpha = static_cast<std::uint8_t>(std::round(255.0f * alphaRatio));
-    sf::FloatRect bubbleBounds({66.0f, 96.0f}, {280.0f, 72.0f});
+    const sf::FloatRect bubbleBounds({66.0f, 158.0f}, {270.0f, 64.0f});
     sf::RectangleShape bubble(bubbleBounds.size);
     bubble.setPosition(bubbleBounds.position);
     bubble.setFillColor(sf::Color(246, 242, 232, alpha));
@@ -563,7 +564,8 @@ void ShopView::drawDialogueBubble(sf::RenderWindow& window) const
 
     sf::CircleShape tail(13.0f, 3);
     tail.setFillColor(sf::Color(246, 242, 232, alpha));
-    tail.setPosition({142.0f, 157.0f});
+    tail.setPosition({bubbleBounds.position.x + 76.0f,
+                      bubbleBounds.position.y + bubbleBounds.size.y - 11.0f});
     tail.setRotation(sf::degrees(30.0f));
     window.draw(tail);
 

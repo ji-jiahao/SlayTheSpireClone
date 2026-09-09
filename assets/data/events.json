@@ -16,13 +16,13 @@
         "overlay_alpha": 150
       },
       {
-        "text": "车大win，你感受到了六朝遗韵，获得100金币并回复20点血量",
+        "text": "你加入了九龙湖赶课特种兵：书包当哑铃，赶课当拉练。课还没听懂，肱二头肌先修满了学分。\n\n此后每场战斗开始时，获得 1 力量。",
         "sound": "assets/sounds/southeast_university_anthem.mp3",
         "overlay_alpha": 150,
         "close_on_click": 1
       },
       {
-        "text": "车大lose，你不是一个合格的车兵，丢弃所有金币",
+        "text": "你学会了南大式突击答辩。每次开战先问敌人：“你的攻击有什么创新点？”对方当场心虚，拳头也跟着软了。\n\n此后每场战斗开始时，敌人获得 1 层虚弱。",
         "sound": "assets/sounds/laoda_theme.ogg",
         "overlay_alpha": 150,
         "close_on_click": 1
@@ -30,29 +30,26 @@
     ],
     "options": [
       {
-        "text": "东南大学",
+        "text": "东南大学\n每场战斗开局：获得 1 力量",
         "state": 0,
         "next_state": 1,
         "closes_event": 0,
         "effects": [
           {
-            "type": "gain_gold",
-            "value": 100
-          },
-          {
-            "type": "heal",
-            "value": 20
+            "type": "gain_battle_start_strength",
+            "value": 1
           }
         ]
       },
       {
-        "text": "南京大学",
+        "text": "南京大学\n每场战斗开局：敌人获得 1 层虚弱",
         "state": 0,
         "next_state": 2,
         "closes_event": 0,
         "effects": [
           {
-            "type": "lose_all_gold"
+            "type": "gain_battle_start_enemy_weak",
+            "value": 1
           }
         ]
       }

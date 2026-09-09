@@ -86,7 +86,7 @@
 - 右键或 `Esc` 取消本次选择。
 - 出牌后播放飞行弧线、命中闪光和碎片效果。
 - 结束回合按钮沿用开始界面的悬停高亮方式，点击时播放 `assets/sounds/end_turn.mp3`。
-- 普通战斗会在 `assets/sounds/battle_normal_2.mp3` 和 `assets/sounds/battle_normal_3.mp3` 之间轮流播放；贝利亚 Boss 首次被击倒前播放 `assets/sounds/final_battle.mp3`，相信光复活后继续播放 `assets/sounds/heavy_is_the_crown.mp3`。
+- 普通战斗会在 `assets/sounds/battle_normal_2.mp3` 和 `assets/sounds/battle_normal_3.mp3` 之间轮流播放；贝利亚 Boss 首次被击倒前播放 Clark Aboud 的《The Heart》（`assets/sounds/the_heart.mp3`），相信光复活后继续播放 `assets/sounds/heavy_is_the_crown.mp3`。
 - 进入贝利亚 Boss 战时先从地图画面淡入 `assets/images/background/belial_intro_earth.jpg` 和 `assets/images/enemies/belial.png`，同时播放 `assets/sounds/belial_intro.mp3` 与 Boss 战配乐；音效结束或玩家输入后才进入战斗。
 - 贝利亚 Boss 胜利后进入制作名单结算流程，淡黑时开始播放 `assets/sounds/ending_credits.mp3`，流程结束后自动重置运行状态并返回主菜单。
 - 战斗胜利后显示卡牌奖励窗口，可点击三张候选卡牌中的一张加入牌组，也可以点击“跳过”或按 `Esc` 返回地图；金币奖励只在本场胜利结算一次。
@@ -192,7 +192,7 @@
 - `assets/images/enemies/<enemy_id>/frame_000.png`：普通敌人逐帧 PNG；原始 GIF 已在资源接入时转换并去除洋红色背景
 - `assets/sounds/belial_intro.mp3`：贝利亚 Boss 出场画面播放一次的开场语音
 - `assets/sounds/battle_normal_2.mp3`、`assets/sounds/battle_normal_3.mp3`：普通战斗轮换播放的两首战斗曲
-- `assets/sounds/final_battle.mp3`：贝利亚 Boss 第一次死亡前的战斗曲
+- `assets/sounds/the_heart.mp3`：贝利亚 Boss 第一次死亡前的战斗曲（Clark Aboud — The Heart）
 - `assets/sounds/heavy_is_the_crown.mp3`：贝利亚相信光复活后的战斗曲
 - `assets/sounds/ending_credits.mp3`：击败贝利亚后的结算和制作名单音乐
 - `assets/sounds/university_event.mp3`：大学事件进入初始状态时播放的背景曲

@@ -433,53 +433,24 @@ void connectRows(std::vector<MapNode>& nodeList, int rowCount,
             continue;
         }
 
-        std::vector<int> targetIds;
-        targetIds.reserve(nextRowIndexes.size());
-        for (int nextIndex : nextRowIndexes)
-        {
-            targetIds.push_back(nodeList[nextIndex].id);
-        }
-        std::shuffle(targetIds.begin(), targetIds.end(), randomEngine);
+        // Generated branch rows have equal widths; the final row has one Boss.
+        // Always connect the nearest node directly above before adding a fork.
+        for (std::size_t i = 0; i < currentRowIndexes.size(); ++i)
+            addConnection(nodeList[currentRowIndexes[i]],
+                          nodeList[nextRowIndexes[nextRowIndexes.size() == 1 ? 0 : i]].id,
+                          tripleConnectionNodeCount);
 
-        for (int targetId : targetIds)
+        if (nextRowIndexes.size() == 1) continue;
+        // At each boundary allow at most one diagonal, never both sides of an X.
+        // All secondary links are adjacent and each node has at most two exits.
+        for (std::size_t i = 0; i + 1 < currentRowIndexes.size(); ++i)
         {
-            addToLeastConnectedNode(nodeList, currentRowIndexes, targetId,
-                                    tripleConnectionNodeCount, randomEngine);
-        }
-
-        std::uniform_int_distribution<int> targetDistribution(
-            0, static_cast<int>(targetIds.size()) - 1);
-        for (int currentIndex : currentRowIndexes)
-        {
-            if (nodeList[currentIndex].nextNodeIds.empty())
-            {
-                addConnection(nodeList[currentIndex],
-                              targetIds[targetDistribution(randomEngine)],
-                              tripleConnectionNodeCount);
-            }
-        }
-
-        for (int currentIndex : currentRowIndexes)
-        {
-            const int maxConnectionCount =
-                std::min(kMaxOutgoingConnectionCount,
-                         static_cast<int>(targetIds.size()));
-            std::uniform_int_distribution<int> desiredDistribution(
-                1, maxConnectionCount);
-            const int desiredConnectionCount = desiredDistribution(randomEngine);
-            int attemptCount = 0;
-            while (static_cast<int>(nodeList[currentIndex].nextNodeIds.size()) <
-                       desiredConnectionCount &&
-                   attemptCount < maxConnectionCount * 4)
-            {
-                addConnection(nodeList[currentIndex],
-                              targetIds[targetDistribution(randomEngine)],
-                              tripleConnectionNodeCount);
-                ++attemptCount;
-            }
-
-            std::sort(nodeList[currentIndex].nextNodeIds.begin(),
-                      nodeList[currentIndex].nextNodeIds.end());
+            if (!std::bernoulli_distribution(0.5)(randomEngine)) continue;
+            const bool rightward = std::bernoulli_distribution(0.5)(randomEngine);
+            const auto source = currentRowIndexes[rightward ? i : i + 1];
+            const auto target = nextRowIndexes[rightward ? i + 1 : i];
+            if (nodeList[source].nextNodeIds.size() < 2)
+                addConnection(nodeList[source], nodeList[target].id, tripleConnectionNodeCount);
         }
     }
 }
@@ -487,14 +458,18 @@ void connectRows(std::vector<MapNode>& nodeList, int rowCount,
 
 std::vector<MapNode> MapGenerator::generateMap(int rowCount)
 {
+    return generateMap(rowCount, std::random_device{}());
+}
+
+std::vector<MapNode> MapGenerator::generateMap(int rowCount, std::uint32_t seed)
+{
     std::vector<MapNode> nodeList;
     if (rowCount <= 0)
     {
         return nodeList;
     }
 
-    std::random_device randomDevice;
-    std::mt19937 randomEngine(randomDevice());
+    std::mt19937 randomEngine(seed);
     int globalNodeId = 0;
     const int branchCount = rowCount > 1
                                 ? std::uniform_int_distribution<int>(2, 4)(randomEngine)
@@ -540,7 +515,7 @@ std::vector<MapNode> MapGenerator::generateMap(int rowCount)
     }
 
     connectRows(nodeList, rowCount, randomEngine);
-    assignBarycentricColumns(nodeList, rowCount, randomEngine);
+    // Keep the column order used for constructing the non-crossing edges.
 
     return nodeList;
 }

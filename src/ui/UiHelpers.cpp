@@ -1,7 +1,5 @@
 #include "ui/UiHelpers.hpp"
 
-#include <sstream>
-
 namespace UiHelpers
 {
 sf::String toSfString(const std::string& text)
@@ -21,30 +19,67 @@ std::vector<std::string> wrapText(const sf::Font& font, const std::string& text,
                                   unsigned int characterSize, float maxWidth)
 {
     std::vector<std::string> lines;
-    std::istringstream words(text);
-    std::string word;
-    std::string line;
-
+    const sf::String characters = toSfString(text);
+    sf::String line;
     sf::Text measure(font, "", characterSize);
-
-    while (words >> word)
+    const auto fits = [&](const sf::String& value)
     {
-        const std::string candidate = line.empty() ? word : line + " " + word;
-        measure.setString(toSfString(candidate));
-        if (!line.empty() && measure.getLocalBounds().size.x > maxWidth)
+        measure.setString(value);
+        return measure.getLocalBounds().size.x <= maxWidth;
+    };
+    const auto flush = [&]()
+    {
+        const auto utf8 = line.toUtf8();
+        lines.emplace_back(utf8.begin(), utf8.end());
+        line.clear();
+    };
+
+    for (std::size_t index = 0; index < characters.getSize();)
+    {
+        const char32_t character = characters[index++];
+        if (character == U'\r')
         {
-            lines.push_back(line);
-            line = word;
+            continue;
         }
-        else
+        if (character == U'\n')
         {
-            line = candidate;
+            flush();
+            continue;
+        }
+
+        // Keep ASCII words together when possible; Chinese may wrap per code point.
+        sf::String token(character == U'\t' ? U' ' : character);
+        if (character > U' ' && character < 127)
+        {
+            while (index < characters.getSize() && characters[index] > U' ' &&
+                   characters[index] < 127)
+            {
+                token += characters[index++];
+            }
+        }
+        if (!line.isEmpty() && !fits(line + token))
+        {
+            flush();
+            if (token == sf::String(U' '))
+            {
+                continue;
+            }
+        }
+        // Also break an unusually long word rather than letting it overflow.
+        for (char32_t codePoint : token)
+        {
+            if (!line.isEmpty() && !fits(line + sf::String(codePoint)))
+            {
+                flush();
+            }
+            line += codePoint;
         }
     }
 
-    if (!line.empty())
+    if (!line.isEmpty() || (!characters.isEmpty() &&
+                            characters[characters.getSize() - 1] == U'\n'))
     {
-        lines.push_back(line);
+        flush();
     }
 
     return lines;

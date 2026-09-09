@@ -1,6 +1,7 @@
 #include "ui/BattleView.hpp"
 
 #include "ui/CardView.hpp"
+#include "ui/CardPresentation.hpp"
 #include "ui/UiHelpers.hpp"
 
 #include <algorithm>
@@ -243,6 +244,26 @@ void BattleView::reset()
 void BattleView::update(float deltaSeconds, const CombatSystem& combat)
 {
     updateActiveVisuals(deltaSeconds);
+    // Refresh cached hover artwork even when the mouse stays still as costs change.
+    auto refresh = [&](HoverCardVisual& visual, sf::RenderTexture& texture, bool tooltip) {
+        if (!visual.active || visual.handIndex < 0 ||
+            static_cast<std::size_t>(visual.handIndex) >= combat.getHandCards().size()) return;
+        const auto& original = combat.getHandCards()[visual.handIndex];
+        if (original.id != visual.card.id) return;
+        const auto display = CardPresentation::forCombat(original, combat);
+        if (display.cost != visual.card.cost || display.name != visual.card.name ||
+            display.description != visual.card.description)
+        {
+            visual.card = display;
+            updateHoverCardTexture(texture, display);
+            if (tooltip) updateHoverPanel(display, visual.bounds);
+        }
+    };
+    refresh(hoveredCard_, hoveredCardTexture_, true);
+    refresh(fadingCard_, fadingCardTexture_, false);
+    if (selectedCard_.active && selectedCard_.handIndex >= 0 &&
+        static_cast<std::size_t>(selectedCard_.handIndex) < combat.getHandCards().size())
+        selectedCard_.card = CardPresentation::forCombat(combat.getHandCards()[selectedCard_.handIndex], combat);
     playerAnimationTimer_ += std::max(0.0f, deltaSeconds);
     while (playerAnimationTimer_ >= kPlayerFrameSeconds && !playerFrames_.empty())
     {
@@ -260,7 +281,7 @@ void BattleView::update(float deltaSeconds, const CombatSystem& combat)
 
 void BattleView::handleMouseMove(sf::Vector2f mousePosition, const CombatSystem& combat)
 {
-    if (hud_.handleMouseMove(mousePosition))
+    if (hud_.handleMouseMove(mousePosition) || combat.hasPendingDiscardChoice())
     {
         clearHoverVisual();
         endTurnHovered_ = false;
@@ -283,7 +304,7 @@ void BattleView::handleMouseMove(sf::Vector2f mousePosition, const CombatSystem&
 
     endTurnHovered_ = getEndTurnButtonBounds().contains(mousePosition);
 
-    const std::vector<Card>& hand = combat.getHandCards();
+    const auto hand = CardPresentation::handForCombat(combat);
     const auto layouts = handLayouts(hand);
     const int handIndex = BattleHover::pickHoveredCardIndex(mousePosition, layouts);
 
@@ -318,7 +339,8 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
     {
         if (getSelectionTargetBounds(selectedCard_.targetKind).contains(mousePosition))
         {
-            const Card playedCard = selectedCard_.card;
+            const Card playedCard = CardPresentation::forCombat(
+                combat.getHandCards()[selectedCard_.handIndex], combat);
             const sf::Vector2f startPos = selectedCard_.bounds.position;
             const BattleTargetKind targetKind = selectedCard_.targetKind;
 
@@ -345,6 +367,7 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
         }
 
         const Card card = hand[static_cast<std::size_t>(layout.handIndex)];
+        const Card displayCard = CardPresentation::forCombat(card, combat);
         const int cardCost = combat.getPlayableCardCost(card);
         if (cardCost < 0)
         {
@@ -358,12 +381,12 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
 
         if (BattleCast::requiresTargetSelection(card))
         {
-            beginTargetSelection(hand, layout.handIndex, layout.bounds);
+            beginTargetSelection(CardPresentation::handForCombat(combat), layout.handIndex, layout.bounds);
             updateSelectionTargetHover(mousePosition);
         }
         else if (combat.playCard(layout.handIndex))
         {
-            startPlayAnimation(card, layout.bounds.position, BattleCast::resolveTargetKind(card));
+            startPlayAnimation(displayCard, layout.bounds.position, BattleCast::resolveTargetKind(card));
             playCardSound(card);
         }
         return;
@@ -772,7 +795,7 @@ void BattleView::updateHoverPanel(const Card& card, const sf::FloatRect& bounds)
     hoverTypeText_->setPosition({hoverPanelPosition_.x + kSidePadding,
                                  hoverPanelPosition_.y + 40.0f});
 
-    const std::string costLabel = card.cost == -1 ? "X" : std::to_string(card.cost);
+    const std::string costLabel = CardPresentation::costLabel(card.cost);
     hoverCostText_->setString(UiHelpers::toSfString(costLabel));
     hoverCostCircle_.setPosition({hoverPanelPosition_.x + hoverPanelSize_.x - 30.0f,
                                   hoverPanelPosition_.y + 26.0f});
@@ -1055,7 +1078,7 @@ void BattleView::draw(sf::RenderWindow& window, const CombatSystem& combat) cons
 
     drawPlayerPanel(window, combat.getPlayer());
     drawEnemyPanel(window, combat.getEnemy(), combat.getEnemyIntentDamage());
-    drawHand(window, combat.getHandCards());
+    drawHand(window, CardPresentation::handForCombat(combat));
     drawEndTurnButton(window);
 
     for (const PlayAnim& anim : activePlays_)

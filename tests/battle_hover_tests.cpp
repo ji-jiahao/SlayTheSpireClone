@@ -1,5 +1,6 @@
 #include "card/CardDatabase.hpp"
 #include "ui/BattleHover.hpp"
+#include "ui/UiHelpers.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -70,9 +71,47 @@ void testEaseOutCubic()
     require(BattleHover::easeOutCubic(0.5f) > 0.5f,
             "ease-out 在中点应快于线性插值");
 }
+
+void testChineseTextWrapping(const std::string& fontPath)
+{
+    sf::Font font;
+    require(font.openFromFile(fontPath), "应能加载中文字体");
+    const std::vector<std::string> descriptions = {
+        CardDatabase::createById("rampage").description,
+        "这是一段没有空格的中文说明，必须在提示框内部自动换行。",
+        "中文与 English words 以及 123 数字混排。",
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+    };
+    for (const auto& description : descriptions)
+    {
+        const auto lines = UiHelpers::wrapText(font, description, 15, 252.0f);
+        require(!lines.empty(), "说明文字不应丢失");
+        sf::String restored;
+        for (const auto& line : lines)
+        {
+            const sf::Text measure(font, UiHelpers::toSfString(line), 15);
+            require(measure.getLocalBounds().size.x <= 252.0f,
+                    "中文和长单词均不应超出提示框内容宽度");
+            restored += UiHelpers::toSfString(line);
+        }
+        const auto withoutSpaces = [](const sf::String& input)
+        {
+            sf::String result;
+            for (char32_t character : input)
+                if (character != U' ') result += character;
+            return result;
+        };
+        require(withoutSpaces(restored) == withoutSpaces(UiHelpers::toSfString(description)),
+                "换行不能丢失或损坏中文字符");
+    }
+    const auto paragraphs = UiHelpers::wrapText(font, "第一段\n\n第二段", 28, 900.0f);
+    require(paragraphs == std::vector<std::string>{"第一段", "", "第二段"},
+            "事件结果应保留显式换行和空行");
+    require(UiHelpers::wrapText(font, "", 15, 252.0f).empty(), "空文字应保持为空");
+}
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     try
     {
@@ -80,6 +119,7 @@ int main()
         testPickHoveredCardIndex();
         testComputeTooltipPosition();
         testEaseOutCubic();
+        testChineseTextWrapping(argc > 1 ? argv[1] : "assets/fonts/simhei.ttf");
         std::cout << "战斗悬停测试通过。\n";
         return 0;
     }

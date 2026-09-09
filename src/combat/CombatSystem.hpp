@@ -36,7 +36,8 @@ public:
     void startBattle(int currentHealth, std::uint32_t seed, std::vector<Card> cards,
                      const EncounterDefinition& encounter, int startingBlock,
                      int startingStrength, int startingEnergy = 0,
-                     int extraDrawCards = 0, int maxHealth = 80);
+                     int extraDrawCards = 0, int maxHealth = 80,
+                     int startingEnemyWeak = 0);
     bool playCard(int handIndex);
     int getPlayableCardCost(const Card& card) const;
     void endPlayerTurn();
@@ -52,6 +53,9 @@ public:
     const Deck& getDeck() const;
     int getEnemyIntentDamage() const;
     BattleResult getResult() const;
+    bool hasPendingDiscardChoice() const;
+    std::vector<Card> getDiscardChoiceCards() const;
+    bool chooseDiscardCard(std::size_t choiceIndex);
 
 private:
     struct BattleSnapshot
@@ -87,6 +91,8 @@ private:
         int lastExhaustedCount = 0;
         std::unordered_map<std::string, int> rampageBonuses;
         std::string activeCardId;
+        std::vector<std::size_t> discardChoices;
+        int discardChoicesRemaining = 0;
     };
 
     void captureSafeSnapshot();
@@ -149,4 +155,7 @@ private:
     std::unordered_map<std::string, int> rampageBonuses;
     std::string activeCardId;
     std::unique_ptr<BattleSnapshot> lastSafeSnapshot;
+    std::vector<std::size_t> discardChoices;
+    int discardChoicesRemaining = 0;
+    int resolvingDiscardIndex = -1;
 };

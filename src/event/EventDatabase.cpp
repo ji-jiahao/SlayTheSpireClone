@@ -508,6 +508,16 @@ EventEffectType parseEventEffectType(const std::string& typeName)
         return EventEffectType::LoseAllGold;
     }
 
+    if (typeName == "gain_battle_start_strength")
+    {
+        return EventEffectType::GainBattleStartStrength;
+    }
+
+    if (typeName == "gain_battle_start_enemy_weak")
+    {
+        return EventEffectType::GainBattleStartEnemyWeak;
+    }
+
     if (typeName == "add_card")
     {
         return EventEffectType::AddCard;
@@ -659,6 +669,10 @@ std::string eventEffectTypeToString(EventEffectType type)
         return "lose_gold";
     case EventEffectType::LoseAllGold:
         return "lose_all_gold";
+    case EventEffectType::GainBattleStartStrength:
+        return "gain_battle_start_strength";
+    case EventEffectType::GainBattleStartEnemyWeak:
+        return "gain_battle_start_enemy_weak";
     case EventEffectType::AddCard:
         return "add_card";
     case EventEffectType::RemoveCard:

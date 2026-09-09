@@ -11,6 +11,8 @@ enum class EventEffectType
     GainGold,
     LoseGold,
     LoseAllGold,
+    GainBattleStartStrength,
+    GainBattleStartEnemyWeak,
     AddCard,
     RemoveCard,
     UpgradeCard

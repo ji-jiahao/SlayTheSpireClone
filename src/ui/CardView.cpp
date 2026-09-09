@@ -1,4 +1,5 @@
 #include "ui/CardView.hpp"
+#include "ui/CardPresentation.hpp"
 #include "ui/UiHelpers.hpp"
 
 #include <string>
@@ -157,15 +158,49 @@ void CardView::draw(sf::RenderTarget& target, const Card& card) const
                          (kCardHeight / static_cast<float>(textureSize.y)) * scale_});
         sprite.setRotation(sf::degrees(rotation_));
         target.draw(sprite);
+
+        // Cover only the printed orb; artwork and cost share the same transform.
+        if (font_ != nullptr)
+        {
+            sf::RenderStates states;
+            states.transform.translate(position_ + sf::Vector2f{kCardWidth / 2, kCardHeight / 2});
+            states.transform.rotate(sf::degrees(rotation_));
+            states.transform.scale({scale_, scale_});
+            states.transform.translate({-kCardWidth / 2, -kCardHeight / 2});
+            const float radius = 17.0f;
+            sf::CircleShape circle(radius, 32);
+            circle.setOrigin({radius, radius});
+            circle.setPosition({22.0f, 24.0f});
+            circle.setFillColor(colorForType(card.type));
+            circle.setOutlineThickness(2.0f);
+            circle.setOutlineColor(sf::Color(39,31,28));
+            target.draw(circle, states);
+            circle.setRadius(14.5f);
+            circle.setOrigin({14.5f,14.5f});
+            circle.setOutlineThickness(1.0f);
+            circle.setOutlineColor(sf::Color(242,214,160));
+            target.draw(circle, states);
+            sf::Text costText = UiHelpers::makeText(*font_, CardPresentation::costLabel(card.cost), 23, sf::Color(255,246,220));
+            costText.setStyle(sf::Text::Bold);
+            costText.setOutlineThickness(1.0f);
+            costText.setOutlineColor(sf::Color(39,31,28));
+            const auto bounds = costText.getLocalBounds();
+            costText.setPosition(circle.getPosition() - sf::Vector2f{bounds.position.x + bounds.size.x / 2.0f,
+                                                                       bounds.position.y + bounds.size.y / 2.0f});
+            target.draw(costText, states);
+        }
         return;
     }
 
+    sf::RenderStates states;
+    const sf::Vector2f center = position_ + sf::Vector2f{kCardWidth / 2, kCardHeight / 2};
+    states.transform.translate(center).rotate(sf::degrees(rotation_)).scale({scale_, scale_}).translate(-center);
     sf::RectangleShape body({kCardWidth, kCardHeight});
     body.setPosition(position_);
     body.setFillColor(colorForType(card.type));
     body.setOutlineColor(sf::Color(40, 32, 26));
     body.setOutlineThickness(kOutlineThickness);
-    target.draw(body);
+    target.draw(body, states);
 
     if (font_ == nullptr)
     {
@@ -173,23 +208,23 @@ void CardView::draw(sf::RenderTarget& target, const Card& card) const
     }
 
     // 费用：左上角圆形。
-    if (card.cost > 0 || card.cost == -1)
+    if (card.cost >= -1)
     {
         const float radius = 22.0f;
         sf::CircleShape costCircle(radius, 24);
         costCircle.setOrigin({radius, radius});
         costCircle.setPosition({position_.x + radius + 6.0f, position_.y + radius + 6.0f});
         costCircle.setFillColor(sf::Color(246, 240, 224));
-        target.draw(costCircle);
+        target.draw(costCircle, states);
 
-        const std::string costLabel = card.cost == -1 ? "X" : std::to_string(card.cost);
+        const std::string costLabel = CardPresentation::costLabel(card.cost);
         sf::Text costText = UiHelpers::makeText(*font_, costLabel, 22,
                                                 sf::Color(40, 32, 26));
         const sf::FloatRect costBounds = costText.getLocalBounds();
         costText.setPosition(
             {position_.x + radius + 6.0f - costBounds.size.x / 2.0f - costBounds.position.x,
              position_.y + radius + 6.0f - costBounds.size.y / 2.0f - costBounds.position.y - 2.0f});
-        target.draw(costText);
+        target.draw(costText, states);
     }
 
     // 卡名：顶部居中。
@@ -198,13 +233,13 @@ void CardView::draw(sf::RenderTarget& target, const Card& card) const
     nameText.setPosition({position_.x + (kCardWidth - nameBounds.size.x) / 2.0f -
                               nameBounds.position.x,
                           position_.y + 10.0f});
-    target.draw(nameText);
+    target.draw(nameText, states);
 
     // 描述面板。
     sf::RectangleShape panel({kCardWidth - 24.0f, kCardHeight - 96.0f});
     panel.setPosition({position_.x + 12.0f, position_.y + 48.0f});
     panel.setFillColor(sf::Color(246, 240, 224));
-    target.draw(panel);
+    target.draw(panel, states);
 
     const std::vector<std::string> lines =
         UiHelpers::wrapText(*font_, card.description, 16, kCardWidth - 48.0f);
@@ -213,7 +248,7 @@ void CardView::draw(sf::RenderTarget& target, const Card& card) const
     {
         sf::Text descText = UiHelpers::makeText(*font_, line, 16, sf::Color(40, 34, 28));
         descText.setPosition({position_.x + 24.0f, lineY});
-        target.draw(descText);
+        target.draw(descText, states);
         lineY += 22.0f;
     }
 
@@ -224,7 +259,7 @@ void CardView::draw(sf::RenderTarget& target, const Card& card) const
             UiHelpers::makeText(*font_, "DMG " + std::to_string(card.damage), 18,
                                 sf::Color(250, 246, 236));
         damageText.setPosition({position_.x + 14.0f, position_.y + kCardHeight - 34.0f});
-        target.draw(damageText);
+        target.draw(damageText, states);
     }
 
     if (card.block > 0)
@@ -235,6 +270,6 @@ void CardView::draw(sf::RenderTarget& target, const Card& card) const
         const sf::FloatRect blockBounds = blockText.getLocalBounds();
         blockText.setPosition({position_.x + kCardWidth - 14.0f - blockBounds.size.x,
                                position_.y + kCardHeight - 34.0f});
-        target.draw(blockText);
+        target.draw(blockText, states);
     }
 }

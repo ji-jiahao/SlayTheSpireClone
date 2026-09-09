@@ -3,6 +3,7 @@
 #include "card/CardDatabase.hpp"
 #include "map/MapGenerator.hpp"
 #include "ui/CardView.hpp"
+#include "ui/MapIcons.hpp"
 #include "ui/UiHelpers.hpp"
 
 #include <array>
@@ -26,8 +27,6 @@ constexpr const char* kBattleBackgroundPath =
 constexpr const char* kBelialIntroBackgroundPath =
     "assets/images/background/belial_intro_earth.jpg";
 constexpr const char* kBelialImagePath = "assets/images/enemies/belial.png";
-constexpr const char* kMapBackgroundPath =
-    "assets/images/background/map_background.png";
 constexpr const char* kShopBackgroundPath =
     "assets/images/background/shop_background.jpg";
 constexpr const char* kRestBackgroundPath = "assets/images/rest/campfire_background.jpg";
@@ -39,7 +38,7 @@ constexpr std::array<const char*, 2> kBattleMusicPaths = {{
     "assets/sounds/battle_normal_3.mp3",
 }};
 constexpr const char* kMerchantMusicPath = "assets/sounds/meet_the_merchant.mp3";
-constexpr const char* kBossMusicPath = "assets/sounds/final_battle.mp3";
+constexpr const char* kBossMusicPath = "assets/sounds/the_heart.mp3";
 constexpr const char* kFailureMusicPath = "assets/sounds/laoda_theme.ogg";
 constexpr const char* kEndingMusicPath = "assets/sounds/ending_credits.mp3";
 constexpr const char* kBelialIntroSoundPath = "assets/sounds/belial_intro.mp3";
@@ -51,9 +50,10 @@ constexpr const char* kMerchantFramesPath = "assets/images/shop/merchant_frames"
 constexpr const char* kUniversityEventId = "university_choice";
 constexpr const char* kNailongEventId = "sacred_nailong";
 constexpr float kBattleRewardCardScale = 1.0f;
-constexpr float kMapViewportTop = 150.0f;
+constexpr float kMapViewportTop = 240.0f;
 constexpr float kMapViewportBottom = 625.0f;
 constexpr float kMapNodeSpacingX = 250.0f;
+constexpr float kMapContentWidth = 950.0f;
 constexpr float kMapNodeSize = 72.0f;
 constexpr float kMapScrollStep = 90.0f;
 constexpr float kBelialFadeSeconds = 1.8f;
@@ -88,7 +88,7 @@ std::string mapNodeTypeName(MapNodeType type)
     case MapNodeType::Battle:
         return "战斗";
     case MapNodeType::Elite:
-        return "首领";
+        return "精英战斗";
     case MapNodeType::Rest:
         return "休息";
     case MapNodeType::Shop:
@@ -296,12 +296,6 @@ Game::Game()
         std::cerr << "无法加载贝利亚出场立绘: " << kBelialImagePath << std::endl;
     }
 
-    mapBackgroundLoaded = mapBackgroundTexture.loadFromFile(kMapBackgroundPath);
-    if (!mapBackgroundLoaded)
-    {
-        std::cerr << "无法加载地图背景: " << kMapBackgroundPath << std::endl;
-    }
-
     shopBackgroundLoaded = shopBackgroundTexture.loadFromFile(kShopBackgroundPath);
     if (shopBackgroundLoaded)
     {
@@ -345,12 +339,6 @@ Game::Game()
     if (!eventDatabase.loadFromFile(kEventDataPath))
     {
         lastError = "加载事件数据库失败: " + eventDatabase.getLastError();
-        std::cerr << lastError << std::endl;
-    }
-
-    mapIconsLoaded = loadMapIconTextures();
-    if (!mapIconsLoaded)
-    {
         std::cerr << lastError << std::endl;
     }
 
@@ -598,6 +586,8 @@ void Game::handleWindowEvent(const sf::Event& event)
 
 void Game::handleMapMouseClick(sf::Vector2f mousePosition)
 {
+    if (mousePosition.x < 0 || mousePosition.x >= kMapContentWidth ||
+        mousePosition.y < kMapViewportTop || mousePosition.y >= kMapViewportBottom) return;
     const sf::Vector2f worldMousePosition{mousePosition.x,
                                           mousePosition.y + mapScrollOffset_};
     for (const MapNodeButton& button : layoutMapNodes())
@@ -925,8 +915,10 @@ void Game::startBattle(bool preserveRetryState)
             : EncounterDefinition{};
     battleIsBelial_ = encounter.enemyId == "belial";
     combat.startBattle(state.currentHealth, state.seed, buildCombatDeck(),
-                       encounter, modifiers.block, modifiers.strength,
-                       modifiers.energy, modifiers.drawCards, state.maxHealth);
+                       encounter, modifiers.block,
+                       modifiers.strength + state.battleStartStrength,
+                       modifiers.energy, modifiers.drawCards, state.maxHealth,
+                       state.battleStartEnemyWeak);
     const bool bossBattle = currentNode.has_value() &&
                             currentNode->type == MapNodeType::Boss;
     const char* musicPath = kBossMusicPath;
@@ -1418,64 +1410,48 @@ void Game::drawMenuScene()
 
 void Game::drawMapScene()
 {
-    if (mapBackgroundLoaded)
-    {
-        sf::Sprite background(mapBackgroundTexture);
-        const sf::FloatRect bounds = background.getLocalBounds();
-        const float scale = std::max(static_cast<float>(kWindowWidth) / bounds.size.x,
-                                     static_cast<float>(kWindowHeight) / bounds.size.y);
-        background.setScale({scale, scale});
-        background.setPosition(
-            {(static_cast<float>(kWindowWidth) - bounds.size.x * scale) / 2.0f,
-             (static_cast<float>(kWindowHeight) - bounds.size.y * scale) / 2.0f});
-        window.draw(background);
-
-        sf::RectangleShape veil(
-            {static_cast<float>(kWindowWidth), static_cast<float>(kWindowHeight)});
-        veil.setFillColor(sf::Color(8, 12, 17, 116));
-        window.draw(veil);
-    }
-    else
-    {
-        sf::RectangleShape background({static_cast<float>(kWindowWidth),
-                                       static_cast<float>(kWindowHeight)});
-        background.setFillColor(sf::Color(28, 31, 37));
-        window.draw(background);
-    }
+    sf::RectangleShape background({static_cast<float>(kWindowWidth), static_cast<float>(kWindowHeight)});
+    background.setFillColor(sf::Color(224, 211, 184));
+    window.draw(background);
 
     if (!fontLoaded)
     {
         return;
     }
 
-    sf::Text title = makeText("地图", 42, sf::Color(235, 229, 207));
+    sf::Text title = makeText("地图", 42, sf::Color(65, 49, 35));
     title.setPosition({70.0f, 48.0f});
     window.draw(title);
 
     sf::Text hint = makeText("从最底层开始选择路线，之后只能沿连线向上前进。",
-                             22, sf::Color(210, 199, 174));
+                             22, sf::Color(94, 75, 54));
     hint.setPosition({70.0f, 108.0f});
     window.draw(hint);
 
     sf::Text status = makeText("当前生命: " + std::to_string(state.currentHealth) +
                                    "/" + std::to_string(state.maxHealth) +
                                    "    金币: " + std::to_string(state.gold),
-                               24, sf::Color(242, 210, 105));
+                               24, sf::Color(102, 65, 25));
     status.setPosition({70.0f, 154.0f});
     window.draw(status);
 
     if (!statusMessage.empty())
     {
-        sf::Text message = makeText(statusMessage, 20, sf::Color(224, 218, 200));
+        sf::Text message = makeText(statusMessage, 18, sf::Color(94, 75, 54));
         message.setPosition({70.0f, 196.0f});
         window.draw(message);
     }
 
-    sf::RectangleShape mapViewport({static_cast<float>(kWindowWidth),
-                                    kMapViewportBottom - kMapViewportTop});
-    mapViewport.setPosition({0.0f, kMapViewportTop});
-    mapViewport.setFillColor(sf::Color::Transparent);
-    window.draw(mapViewport);
+    // Clip routes and partially visible icons to the same region used for input.
+    const sf::View originalView = window.getView();
+    const auto originalViewport = originalView.getViewport();
+    sf::View mapView(sf::FloatRect({0, kMapViewportTop},
+                                  {kMapContentWidth, kMapViewportBottom - kMapViewportTop}));
+    mapView.setViewport({
+        {originalViewport.position.x, originalViewport.position.y + originalViewport.size.y * kMapViewportTop / kWindowHeight},
+        {originalViewport.size.x * kMapContentWidth / kWindowWidth,
+         originalViewport.size.y * (kMapViewportBottom - kMapViewportTop) / kWindowHeight}});
+    window.setView(mapView);
 
     const std::vector<MapNodeButton> buttons = layoutMapNodes();
     for (const MapNode& node : mapNodes)
@@ -1506,7 +1482,7 @@ void Game::drawMapScene()
             const sf::Vector2f targetCenter = targetIt->bounds.getCenter();
             drawDashedCurve(window, center - sf::Vector2f{0.0f, mapScrollOffset_},
                             targetCenter - sf::Vector2f{0.0f, mapScrollOffset_},
-                            28.0f + 8.0f * static_cast<float>(targetIt->bounds.position.x - buttonIt->bounds.position.x) / 100.0f);
+                            0.0f);
         }
     }
 
@@ -1527,34 +1503,12 @@ void Game::drawMapScene()
         {
             continue;
         }
-        const sf::Texture* texture = getMapNodeTexture(node->type);
-        if (texture != nullptr)
-        {
-            sf::Sprite icon(*texture);
-            const sf::FloatRect localBounds = icon.getLocalBounds();
-            const sf::FloatRect screenBounds(
-                {button.bounds.position.x, button.bounds.position.y - mapScrollOffset_},
-                button.bounds.size);
-            const float scale = std::min(screenBounds.size.x / localBounds.size.x,
-                                         screenBounds.size.y / localBounds.size.y);
-            icon.setScale({scale, scale});
-            icon.setPosition({screenBounds.position.x +
-                                  (screenBounds.size.x - localBounds.size.x * scale) / 2.0f,
-                              screenBounds.position.y +
-                                  (screenBounds.size.y - localBounds.size.y * scale) / 2.0f});
-            icon.setColor(sf::Color(255, 255, 255,
-                                    static_cast<std::uint8_t>(selectable || selected ? 255 : 95)));
-            window.draw(icon);
-        }
-        else
-        {
-            sf::CircleShape circle(button.bounds.size.x / 2.0f, 48);
-            circle.setPosition(screenPosition);
-            circle.setFillColor(mapNodeColor(node->type));
-            circle.setOutlineThickness(selected ? 5.0f : 3.0f);
-            circle.setOutlineColor(sf::Color(238, 221, 170));
-            window.draw(circle);
-        }
+        sf::CircleShape backing(kMapNodeSize / 2, 40);
+        backing.setPosition(screenPosition);
+        backing.setFillColor(sf::Color(224,211,184));
+        window.draw(backing);
+        MapIcons::draw(window, node->type, screenPosition + sf::Vector2f{7,7}, kMapNodeSize - 14,
+                       selectable || selected ? sf::Color(55,44,33) : sf::Color(116,103,83));
 
         if (selectable || selected)
         {
@@ -1562,11 +1516,43 @@ void Game::drawMapScene()
             outline.setPosition(screenPosition);
             outline.setFillColor(sf::Color::Transparent);
             outline.setOutlineThickness(selected ? 5.0f : 3.0f);
-            outline.setOutlineColor(selected ? sf::Color(246, 216, 114)
-                                             : sf::Color(224, 221, 205));
+            outline.setOutlineColor(selected ? sf::Color(144, 65, 34)
+                                             : sf::Color(97, 111, 61));
             window.draw(outline);
         }
 
+    }
+
+    window.setView(originalView);
+    UiHelpers::drawText(window, font, "滚轮上下查看地图 · 绿色圆圈表示可前往", 18,
+                        {70, 666}, sf::Color(94,75,54));
+    // 固定图例：不随地图滚动，说明所有节点图标含义。
+    sf::RectangleShape legend({265.0f, 442.0f});
+    legend.setPosition({985.0f, 150.0f});
+    legend.setFillColor(sf::Color(244, 235, 214, 235));
+    legend.setOutlineColor(sf::Color(111, 88, 61));
+    legend.setOutlineThickness(2.0f);
+    window.draw(legend);
+    sf::Text legendTitle = makeText("图标说明", 25, sf::Color(65, 49, 35));
+    legendTitle.setPosition({1010.0f, 170.0f});
+    window.draw(legendTitle);
+    struct LegendItem { MapNodeType type; const char* label; const char* description; };
+    const std::array<LegendItem, 6> legendItems = {{
+        {MapNodeType::Battle, "普通战斗", "获得金币和卡牌"},
+        {MapNodeType::Elite, "精英战斗", "更强的敌人"},
+        {MapNodeType::Shop, "商店", "购买卡牌或删牌"},
+        {MapNodeType::Event, "事件", "做出选择，触发事件"},
+        {MapNodeType::Rest, "篝火", "休息恢复生命"},
+        {MapNodeType::Boss, "Boss", "本幕最终战"},
+    }};
+    for (std::size_t i = 0; i < legendItems.size(); ++i)
+    {
+        const float y = 215.0f + static_cast<float>(i) * 61.0f;
+        MapIcons::draw(window,legendItems[i].type,{1000,y},38,sf::Color(55,44,33));
+        sf::Text label = makeText(legendItems[i].label, 19, sf::Color(65, 49, 35));
+        label.setPosition({1050.0f, y});
+        window.draw(label);
+        UiHelpers::drawText(window,font,legendItems[i].description,14,{1050,y+25},sf::Color(94,75,54));
     }
 }
 
@@ -1583,8 +1569,9 @@ void Game::drawShopScene()
 
 void Game::drawResultOverlay()
 {
-    if (combat.getResult() == BattleResult::Active ||
-        (combat.getResult() == BattleResult::Victory && battleRewardVisible))
+    // Victory has exactly one UI: the reward overlay. Never revive the legacy
+    // result panel while the reward closes and the map transition fades out.
+    if (combat.getResult() != BattleResult::Defeat)
     {
         return;
     }
@@ -1605,17 +1592,7 @@ void Game::drawResultOverlay()
     title.setPosition({510.0f, 220.0f});
     window.draw(title);
 
-    std::string detail;
-    if (combat.getResult() == BattleResult::Victory)
-    {
-        detail = "燃烧之血回复 " + std::to_string(relicHealing) +
-                 " 点生命  当前生命 " + std::to_string(state.currentHealth) +
-                 "/" + std::to_string(state.maxHealth);
-    }
-    else
-    {
-        detail = "本次挑战结束";
-    }
+    const std::string detail = "本次挑战结束";
 
     sf::Text detailText = makeText(detail, 22, sf::Color(235, 229, 207));
     detailText.setPosition({430.0f, 295.0f});
@@ -1623,13 +1600,6 @@ void Game::drawResultOverlay()
 
     UiHelpers::drawButton(window, font, {{520.0f, 416.0f}, {240.0f, 58.0f}},
                           "重试一次", true, false);
-    if (combat.getResult() == BattleResult::Victory)
-    {
-        sf::Text hint = makeText("点击其他位置返回地图", 18,
-                                 sf::Color(190, 190, 190));
-        hint.setPosition({515.0f, 490.0f});
-        window.draw(hint);
-    }
 }
 
 void Game::drawBelialTransitionOverlay()
@@ -1711,7 +1681,7 @@ void Game::drawBelialTransitionOverlay()
                                     sf::Color(255, 245, 190));
     }
 
-    sf::RectangleShape topMask({static_cast<float>(kWindowWidth), kMapViewportTop});
+    sf::RectangleShape topMask({static_cast<float>(kWindowWidth), 150.0f});
     topMask.setFillColor(sf::Color(8, 12, 17, 105));
     window.draw(topMask);
     sf::RectangleShape bottomMask(
@@ -1954,34 +1924,6 @@ void Game::drawEndingSequence()
     window.draw(hint);
 }
 
-bool Game::loadMapIconTextures()
-{
-    struct TextureLoadItem
-    {
-        sf::Texture* texture;
-        const char* filePath;
-    };
-
-    const std::array<TextureLoadItem, 5> items = {{
-        {&battleNodeTexture, "assets/images/map/node_normal.png"},
-        {&bossNodeTexture, "assets/images/map/node_boss.png"},
-        {&restNodeTexture, "assets/images/map/node_rest.png"},
-        {&shopNodeTexture, "assets/images/map/node_shop.png"},
-        {&eventNodeTexture, "assets/images/map/node_event.png"},
-    }};
-
-    for (const TextureLoadItem& item : items)
-    {
-        if (!item.texture->loadFromFile(item.filePath))
-        {
-            lastError = std::string("无法加载地图图标: ") + item.filePath;
-            return false;
-        }
-    }
-
-    return true;
-}
-
 bool Game::loadShopResources()
 {
     if (!shopView.loadMerchantAnimation(kMerchantFramesPath))
@@ -2029,31 +1971,6 @@ bool Game::playMusic(const std::string& path, bool looping)
 void Game::stopMusic()
 {
     backgroundMusic.stop();
-}
-
-const sf::Texture* Game::getMapNodeTexture(MapNodeType type) const
-{
-    if (!mapIconsLoaded)
-    {
-        return nullptr;
-    }
-
-    switch (type)
-    {
-    case MapNodeType::Battle:
-        return &battleNodeTexture;
-    case MapNodeType::Elite:
-    case MapNodeType::Boss:
-        return &bossNodeTexture;
-    case MapNodeType::Rest:
-        return &restNodeTexture;
-    case MapNodeType::Shop:
-        return &shopNodeTexture;
-    case MapNodeType::Event:
-        return &eventNodeTexture;
-    }
-
-    return nullptr;
 }
 
 std::vector<Card> Game::buildCombatDeck() const
@@ -2105,7 +2022,7 @@ std::vector<Game::MapNodeButton> Game::layoutMapNodes() const
         maxRow = std::max(maxRow, node.row);
     }
 
-    constexpr float worldTop = 220.0f;
+    constexpr float worldTop = kMapViewportTop + 50.0f;
     constexpr float rowGap = 150.0f;
 
     for (const MapNode& node : mapNodes)
@@ -2119,9 +2036,12 @@ std::vector<Game::MapNodeButton> Game::layoutMapNodes() const
             }
         }
 
-        const float totalWidth = static_cast<float>(rowNodeCount - 1) * kMapNodeSpacingX;
-        const float x = static_cast<float>(kWindowWidth) / 2.0f - totalWidth / 2.0f +
-                        static_cast<float>(node.column) * kMapNodeSpacingX - kMapNodeSize / 2.0f;
+        const float spacing = rowNodeCount > 1
+            ? std::min(kMapNodeSpacingX, (kMapContentWidth - 160.0f) / (rowNodeCount - 1))
+            : 0.0f;
+        const float totalWidth = static_cast<float>(rowNodeCount - 1) * spacing;
+        const float x = kMapContentWidth / 2.0f - totalWidth / 2.0f +
+                        static_cast<float>(node.column) * spacing - kMapNodeSize / 2.0f;
         const float y = worldTop + static_cast<float>(maxRow - node.row) * rowGap -
                         kMapNodeSize / 2.0f;
         buttons.push_back({node.id, sf::FloatRect({x, y}, {kMapNodeSize, kMapNodeSize})});
@@ -2143,7 +2063,7 @@ float Game::getMaxMapScrollOffset() const
         maxRow = std::max(maxRow, node.row);
     }
 
-    const float worldBottom = 220.0f + static_cast<float>(maxRow) * 150.0f +
+    const float worldBottom = kMapViewportTop + 50.0f + static_cast<float>(maxRow) * 150.0f +
                               kMapNodeSize / 2.0f;
     return std::max(0.0f, worldBottom - kMapViewportBottom);
 }

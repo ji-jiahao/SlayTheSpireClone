@@ -106,7 +106,7 @@ void CombatSystem::startBattle(int currentHealth, std::uint32_t seed,
                                std::vector<Card> cards,
                                const EncounterDefinition& encounter, int startingBlock,
                                int startingStrength, int startingEnergy,
-                               int extraDrawCards, int maxHealth)
+                               int extraDrawCards, int maxHealth, int startingEnemyWeak)
 {
     battleSeed = seed;
     randomEngine.seed(seed ^ 0x9e3779b9u);
@@ -147,9 +147,13 @@ void CombatSystem::startBattle(int currentHealth, std::uint32_t seed,
     lastExhaustedCount = 0;
     rampageBonuses.clear();
     activeCardId.clear();
+    discardChoices.clear();
+    discardChoicesRemaining = 0;
+    resolvingDiscardIndex = -1;
 
     player.gainBlock(startingBlock);
     player.applyStrength(startingStrength);
+    enemy.applyWeak(startingEnemyWeak);
     player.gainEnergy(startingEnergy);
     drawHand(kHandSize + static_cast<std::size_t>(std::max(0, extraDrawCards)));
     captureSafeSnapshot();
@@ -181,7 +185,7 @@ int CombatSystem::getPlayableCardCost(const Card& card) const
 
 bool CombatSystem::playCard(int handIndex)
 {
-    if (result != BattleResult::Active || handIndex < 0 ||
+    if (result != BattleResult::Active || hasPendingDiscardChoice() || handIndex < 0 ||
         static_cast<std::size_t>(handIndex) >= deck.getHand().size())
     {
         return false;
@@ -206,7 +210,9 @@ bool CombatSystem::playCard(int handIndex)
     }
 
     lastSpentEnergy = cost;
+    resolvingDiscardIndex = -1;
     const bool exhaustPlayedCard =
+        card.type == CardType::Power ||
         cardHasEffect(card, CardEffectType::Exhaust) ||
         (corruptionActive && card.type == CardType::Skill);
     if (exhaustPlayedCard)
@@ -217,6 +223,7 @@ bool CombatSystem::playCard(int handIndex)
     else
     {
         deck.discardCard(index);
+        resolvingDiscardIndex = static_cast<int>(deck.getDiscardPile().size()) - 1;
     }
 
     onCardPlayed(card);
@@ -227,6 +234,7 @@ bool CombatSystem::playCard(int handIndex)
         --doubleTapRemaining;
     }
     resolveCardEffects(card, repetitions);
+    resolvingDiscardIndex = -1;
 
     if (card.id == "rampage")
     {
@@ -256,7 +264,7 @@ bool CombatSystem::playCard(int handIndex)
 
 void CombatSystem::endPlayerTurn()
 {
-    if (result != BattleResult::Active)
+    if (result != BattleResult::Active || hasPendingDiscardChoice())
     {
         return;
     }
@@ -362,6 +370,9 @@ bool CombatSystem::reviveFromLastSafeSnapshot(int bonusStrength, int bonusDexter
     lastExhaustedCount = snapshot.lastExhaustedCount;
     rampageBonuses = snapshot.rampageBonuses;
     activeCardId = snapshot.activeCardId;
+    discardChoices = snapshot.discardChoices;
+    discardChoicesRemaining = snapshot.discardChoicesRemaining;
+    resolvingDiscardIndex = -1;
     if (bonusStrength != 0)
     {
         player.applyStrength(bonusStrength);
@@ -411,6 +422,8 @@ void CombatSystem::captureSafeSnapshot()
     snapshot->lastExhaustedCount = lastExhaustedCount;
     snapshot->rampageBonuses = rampageBonuses;
     snapshot->activeCardId = activeCardId;
+    snapshot->discardChoices = discardChoices;
+    snapshot->discardChoicesRemaining = discardChoicesRemaining;
     lastSafeSnapshot = std::move(snapshot);
 }
 
@@ -426,6 +439,35 @@ int CombatSystem::getEnemyIntentDamage() const
     return calculateEnemyDamage(enemy.getIntent().damage);
 }
 BattleResult CombatSystem::getResult() const { return result; }
+
+bool CombatSystem::hasPendingDiscardChoice() const
+{
+    return result == BattleResult::Active && discardChoicesRemaining > 0 && !discardChoices.empty();
+}
+
+std::vector<Card> CombatSystem::getDiscardChoiceCards() const
+{
+    std::vector<Card> cards;
+    if (hasPendingDiscardChoice())
+        for (auto i : discardChoices) cards.push_back(deck.getDiscardPile()[i]);
+    return cards;
+}
+
+bool CombatSystem::chooseDiscardCard(std::size_t choiceIndex)
+{
+    if (!hasPendingDiscardChoice() || choiceIndex >= discardChoices.size()) return false;
+    const auto index = discardChoices[choiceIndex];
+    if (!deck.moveDiscardCardToDrawPileTop(index)) return false;
+    discardChoices.erase(discardChoices.begin() + static_cast<std::ptrdiff_t>(choiceIndex));
+    for (auto& i : discardChoices) if (i > index) --i;
+    if (--discardChoicesRemaining == 0 || discardChoices.empty())
+    {
+        discardChoicesRemaining = 0;
+        discardChoices.clear();
+    }
+    captureSafeSnapshot();
+    return true;
+}
 
 void CombatSystem::resolveCardEffects(const Card& card, int repetitions)
 {
@@ -802,21 +844,11 @@ void CombatSystem::resolveEffect(const CardEffect& effect)
         }
         else if (effect.parameter == "discard_to_top")
         {
-            bool skippedCurrentCard = false;
-            for (std::size_t index = deck.getDiscardPile().size(); index > 0; --index)
-            {
-                const std::size_t discardIndex = index - 1;
-                if (!skippedCurrentCard &&
-                    deck.getDiscardPile()[discardIndex].id == activeCardId)
-                {
-                    skippedCurrentCard = true;
-                    continue;
-                }
-                if (deck.moveDiscardCardToDrawPileTop(discardIndex))
-                {
-                    break;
-                }
-            }
+            if (enemy.isDead() || player.getCurrentHealth() <= 0) break;
+            if (discardChoicesRemaining == 0)
+                for (std::size_t i = 0; i < deck.getDiscardPile().size(); ++i)
+                    if (static_cast<int>(i) != resolvingDiscardIndex) discardChoices.push_back(i);
+            if (!discardChoices.empty()) ++discardChoicesRemaining;
         }
         else if (effect.parameter == "hand_to_top" && !deck.getHand().empty())
         {
@@ -1036,6 +1068,8 @@ void CombatSystem::playTopCard()
     }
 
     const Card card = *topCard;
+    const int previousDiscardIndex = resolvingDiscardIndex;
+    resolvingDiscardIndex = -1;
     const int previousSpentEnergy = lastSpentEnergy;
     lastSpentEnergy = 0;
     onCardPlayed(card);
@@ -1050,6 +1084,7 @@ void CombatSystem::playTopCard()
     }
     resolveCardEffects(card, repetitions);
     lastSpentEnergy = previousSpentEnergy;
+    resolvingDiscardIndex = previousDiscardIndex;
 }
 
 std::size_t CombatSystem::drawCards(std::size_t count)
