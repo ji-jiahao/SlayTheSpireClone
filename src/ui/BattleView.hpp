@@ -4,6 +4,7 @@
 #include "combat/CombatSystem.hpp"
 #include "ui/BattleCast.hpp"
 #include "ui/BattleHover.hpp"
+#include "ui/BattleHud.hpp"
 
 #include <SFML/Audio.hpp>
 #include <SFML/Graphics.hpp>
@@ -178,4 +179,5 @@ private:
     int lastPlayerHealth_ = 0;
     int lastEnemyHealth_ = 0;
     bool healthSnapshotValid_ = false;
+    BattleHud hud_;
 };

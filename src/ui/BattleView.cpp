@@ -55,7 +55,21 @@ sf::Vector2f playerFocusPoint()
 
 sf::Vector2f enemyFocusPoint()
 {
-    return {1025.0f, 310.0f};
+    return {1025.0f, 345.0f};
+}
+
+std::vector<BattleHover::HandCardLayout> handLayouts(const std::vector<Card>& hand)
+{
+    // Reserve the left edge for piles and the right edge for the end-turn button.
+    auto layouts = BattleHover::layoutHandCards(hand, CardView::getCardSize(),
+                                                kWindowWidth, kHandY, kHandGap);
+    if (layouts.size() > 5)
+    {
+        const float step = 730.0f / static_cast<float>(layouts.size() - 1);
+        for (std::size_t i = 0; i < layouts.size(); ++i)
+            layouts[i].bounds.position.x = 190.0f + step * static_cast<float>(i);
+    }
+    return layouts;
 }
 
 void drawBar(sf::RenderWindow& window, sf::Vector2f position, sf::Vector2f size,
@@ -204,6 +218,7 @@ void BattleView::setBackground(const sf::Texture& texture)
 
 void BattleView::reset()
 {
+    hud_.reset();
     handState_ = HandState::Idle;
     hoveredCard_ = {};
     fadingCard_ = {};
@@ -245,6 +260,12 @@ void BattleView::update(float deltaSeconds, const CombatSystem& combat)
 
 void BattleView::handleMouseMove(sf::Vector2f mousePosition, const CombatSystem& combat)
 {
+    if (hud_.handleMouseMove(mousePosition))
+    {
+        clearHoverVisual();
+        endTurnHovered_ = false;
+        return;
+    }
     if (combat.getResult() != BattleResult::Active)
     {
         clearHoverVisual();
@@ -263,9 +284,7 @@ void BattleView::handleMouseMove(sf::Vector2f mousePosition, const CombatSystem&
     endTurnHovered_ = getEndTurnButtonBounds().contains(mousePosition);
 
     const std::vector<Card>& hand = combat.getHandCards();
-    const std::vector<BattleHover::HandCardLayout> layouts =
-        BattleHover::layoutHandCards(hand, CardView::getCardSize(), kWindowWidth, kHandY,
-                                     kHandGap);
+    const auto layouts = handLayouts(hand);
     const int handIndex = BattleHover::pickHoveredCardIndex(mousePosition, layouts);
 
     if (handIndex == hoveredCard_.handIndex)
@@ -282,6 +301,13 @@ void BattleView::handleMouseMove(sf::Vector2f mousePosition, const CombatSystem&
 void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& combat)
 {
     clearHoverVisual();
+
+    if (hud_.handleMouseClick(mousePosition, combat))
+    {
+        clearTargetSelection();
+        endTurnHovered_ = false;
+        return;
+    }
 
     if (combat.getResult() != BattleResult::Active)
     {
@@ -310,9 +336,7 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
     }
 
     const std::vector<Card>& hand = combat.getHandCards();
-    const std::vector<BattleHover::HandCardLayout> layouts =
-        BattleHover::layoutHandCards(hand, CardView::getCardSize(), kWindowWidth, kHandY,
-                                     kHandGap);
+    const auto layouts = handLayouts(hand);
     for (const BattleHover::HandCardLayout& layout : layouts)
     {
         if (!layout.bounds.contains(mousePosition))
@@ -354,7 +378,7 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
 
 bool BattleView::handleKeyPress(sf::Keyboard::Key key, CombatSystem& combat)
 {
-    (void)combat;
+    if (hud_.handleKeyPress(key, combat)) return true;
     if (handState_ != HandState::SelectingTarget)
     {
         return false;
@@ -1051,16 +1075,7 @@ void BattleView::draw(sf::RenderWindow& window, const CombatSystem& combat) cons
 
     if (font_ != nullptr)
     {
-        sf::Text piles =
-            UiHelpers::makeText(*font_,
-                                "抽牌 " + std::to_string(combat.getDeck().getDrawPile().size()) +
-                                    "   弃牌 " +
-                                    std::to_string(combat.getDeck().getDiscardPile().size()) +
-                                    "   消耗 " +
-                                    std::to_string(combat.getDeck().getExhaustPile().size()),
-                                17, sf::Color(225, 220, 210));
-        piles.setPosition({35.0f, 675.0f});
-        window.draw(piles);
+        hud_.draw(window, *font_, combat);
     }
 }
 
@@ -1189,7 +1204,7 @@ void BattleView::drawEnemyVisual(sf::RenderWindow& window, const Enemy& enemy) c
     sprite.setOrigin({static_cast<float>(size.x) / 2.0f,
                       static_cast<float>(size.y) / 2.0f});
     sprite.setPosition(enemyFocusPoint());
-    const float targetHeight = enemy.getId() == "belial" ? 300.0f : 210.0f;
+    const float targetHeight = enemy.getId() == "belial" ? 240.0f : 210.0f;
     const float scale = targetHeight / static_cast<float>(size.y);
     sprite.setScale({scale, scale});
     window.draw(sprite);
@@ -1219,13 +1234,8 @@ void BattleView::drawPlayerPanel(sf::RenderWindow& window, const Player& player)
         energyText.setPosition({270.0f, 52.0f});
         window.draw(energyText);
 
-        const std::string status = "力量 " + std::to_string(player.getStrength()) +
-                                   "  虚弱 " + std::to_string(player.getWeak()) +
-                                   "  易伤 " + std::to_string(player.getVulnerable());
-        sf::Text statusText = UiHelpers::makeText(*font_, status, 15,
-                                                   sf::Color(190, 190, 200));
-        statusText.setPosition({58.0f, 166.0f});
-        window.draw(statusText);
+        BattleHud::drawStatuses(window, *font_, {58,150}, player.getStrength(),
+                                player.getWeak(), player.getVulnerable());
     }
 
     const float hpRatio = maxHealth > 0.0f ? currentHealth / maxHealth : 0.0f;
@@ -1267,25 +1277,9 @@ void BattleView::drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy,
         title.setPosition({kWindowWidth - 402.0f, 52.0f});
         window.draw(title);
 
-        const EnemyIntent& intent = enemy.getIntent();
-        std::string intentLabel = "意图 " + intent.name + "（" + intentCategory(intent) + "）";
-        if (displayedIntentDamage > 0)
-        {
-            intentLabel += " " + std::to_string(displayedIntentDamage);
-        }
-        sf::Text intentText =
-            UiHelpers::makeText(*font_, intentLabel, 18, sf::Color(230, 120, 110));
-        intentText.setPosition({kWindowWidth - 402.0f, 148.0f});
-        window.draw(intentText);
-
-        const std::string status = "格挡 " + std::to_string(enemy.getBlock()) +
-                                   "  力量 " + std::to_string(enemy.getStrength()) +
-                                   "  虚弱 " + std::to_string(enemy.getWeak()) +
-                                   "  易伤 " + std::to_string(enemy.getVulnerable());
-        sf::Text statusText = UiHelpers::makeText(*font_, status, 15,
-                                                   sf::Color(190, 190, 200));
-        statusText.setPosition({kWindowWidth - 402.0f, 176.0f});
-        window.draw(statusText);
+        BattleHud::drawStatuses(window, *font_, {878,150}, enemy.getStrength(),
+                                enemy.getWeak(), enemy.getVulnerable());
+        BattleHud::drawIntent(window, *font_, enemy, displayedIntentDamage);
     }
 
     const float hpRatio = maxHealth > 0.0f ? currentHealth / maxHealth : 0.0f;
@@ -1316,9 +1310,7 @@ void BattleView::drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy,
 
 void BattleView::drawHand(sf::RenderWindow& window, const std::vector<Card>& hand) const
 {
-    const std::vector<BattleHover::HandCardLayout> layouts =
-        BattleHover::layoutHandCards(hand, CardView::getCardSize(), kWindowWidth, kHandY,
-                                     kHandGap);
+    const auto layouts = handLayouts(hand);
 
     for (const BattleHover::HandCardLayout& layout : layouts)
     {
