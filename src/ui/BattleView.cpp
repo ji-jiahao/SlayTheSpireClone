@@ -32,6 +32,21 @@ constexpr const char* kDefenseCardSoundPath = "assets/sounds/card_defense.mp3";
 constexpr const char* kEndTurnSoundPath = "assets/sounds/end_turn.mp3";
 constexpr float kPlayerFrameSeconds = 0.10f;
 constexpr float kEnemyFrameSeconds = 0.10f;
+constexpr float kHitFlashDurationSeconds = 0.36f;
+constexpr float kHitFlashBlinkCount = 3.0f;
+
+// 受击闪烁所用的片段着色器：把当前纹理采样成白色剪影（保留 alpha），
+// flash_alpha 控制白色透明度，配合计时器实现“白色图像”的闪烁间隔。
+constexpr const char* kHitFlashFragmentShader = R"(
+uniform sampler2D texture;
+uniform float flash_alpha;
+
+void main()
+{
+    vec4 pixel = texture2D(texture, gl_TexCoord[0].xy);
+    gl_FragColor = vec4(1.0, 1.0, 1.0, pixel.a * flash_alpha);
+}
+)";
 
 sf::Vector2f playerFocusPoint()
 {
@@ -151,6 +166,7 @@ BattleView::BattleView()
     loadCardSounds();
     loadPlayerVisuals();
     loadEnemyVisuals();
+    loadHitFlashShader();
 }
 
 void BattleView::setFont(const sf::Font& font)
@@ -200,9 +216,16 @@ void BattleView::reset()
     endTurnHovered_ = false;
     playerAnimationTimer_ = 0.0f;
     playerAnimationFrame_ = 0;
+    playerFlashTimer_ = 0.0f;
+    enemyFlashTimer_ = 0.0f;
+    playerFlashPending_ = false;
+    enemyFlashPending_ = false;
+    lastPlayerHealth_ = 0;
+    lastEnemyHealth_ = 0;
+    healthSnapshotValid_ = false;
 }
 
-void BattleView::update(float deltaSeconds)
+void BattleView::update(float deltaSeconds, const CombatSystem& combat)
 {
     updateActiveVisuals(deltaSeconds);
     playerAnimationTimer_ += std::max(0.0f, deltaSeconds);
@@ -217,6 +240,7 @@ void BattleView::update(float deltaSeconds)
         enemyAnimationTimer_ -= kEnemyFrameSeconds;
         ++enemyAnimationFrame_;
     }
+    updateDamageFlashes(deltaSeconds, combat);
 }
 
 void BattleView::handleMouseMove(sf::Vector2f mousePosition, const CombatSystem& combat)
@@ -452,6 +476,7 @@ void BattleView::startPlayAnimation(const Card& card, sf::Vector2f startPos,
     anim.card = card;
     anim.startPos = {startPos.x, startPos.y};
     anim.targetPos = getTargetFocusPoint(targetKind);
+    anim.targetKind = targetKind;
     activePlays_.push_back(anim);
     handState_ = HandState::Playing;
 }
@@ -497,6 +522,7 @@ void BattleView::updateActiveVisuals(float deltaSeconds)
         {
             anim.finished = true;
             activeBursts_.push_back({anim.targetPos});
+            resolvePendingFlash(anim.targetKind);
         }
     }
 
@@ -523,6 +549,142 @@ void BattleView::updateActiveVisuals(float deltaSeconds)
     if (handState_ == HandState::SelectingTarget && !selectedCard_.active)
     {
         handState_ = HandState::Idle;
+    }
+}
+
+void BattleView::updateDamageFlashes(float deltaSeconds, const CombatSystem& combat)
+{
+    playerFlashTimer_ = std::max(0.0f, playerFlashTimer_ - deltaSeconds);
+    enemyFlashTimer_ = std::max(0.0f, enemyFlashTimer_ - deltaSeconds);
+
+    const int playerHealth = combat.getPlayer().getCurrentHealth();
+    const int enemyHealth = combat.getEnemy().getCurrentHealth();
+
+    if (healthSnapshotValid_)
+    {
+        // 卡牌伤害由飞行动画落到目标时才触发闪烁，其余直接伤害立即闪烁。
+        if (playerHealth < lastPlayerHealth_)
+        {
+            if (hasPlayAnimTargeting(BattleTargetKind::Self))
+            {
+                playerFlashPending_ = true;
+            }
+            else
+            {
+                playerFlashTimer_ = kHitFlashDurationSeconds;
+            }
+        }
+        if (enemyHealth < lastEnemyHealth_)
+        {
+            if (hasPlayAnimTargeting(BattleTargetKind::Enemy))
+            {
+                enemyFlashPending_ = true;
+            }
+            else
+            {
+                enemyFlashTimer_ = kHitFlashDurationSeconds;
+            }
+        }
+    }
+
+    lastPlayerHealth_ = playerHealth;
+    lastEnemyHealth_ = enemyHealth;
+    healthSnapshotValid_ = true;
+}
+
+bool BattleView::hasPlayAnimTargeting(BattleTargetKind targetKind) const
+{
+    return std::any_of(activePlays_.begin(), activePlays_.end(),
+                       [targetKind](const PlayAnim& anim)
+                       {
+                           return !anim.finished && anim.targetKind == targetKind;
+                       });
+}
+
+void BattleView::resolvePendingFlash(BattleTargetKind targetKind)
+{
+    if (targetKind == BattleTargetKind::Enemy && enemyFlashPending_)
+    {
+        enemyFlashTimer_ = kHitFlashDurationSeconds;
+        enemyFlashPending_ = false;
+    }
+    else if (targetKind == BattleTargetKind::Self && playerFlashPending_)
+    {
+        playerFlashTimer_ = kHitFlashDurationSeconds;
+        playerFlashPending_ = false;
+    }
+}
+
+float BattleView::hitFlashAlpha(float timer) const
+{
+    if (timer <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    // 从撞击瞬间起以方波闪烁若干次，并随时间整体淡出。
+    const float progress = 1.0f - timer / kHitFlashDurationSeconds;
+    const float fade = 1.0f - progress;
+    const float phase = progress * kHitFlashBlinkCount;
+    const float blink = std::fmod(phase, 1.0f) < 0.5f ? 1.0f : 0.0f;
+    return std::clamp(blink * fade, 0.0f, 1.0f);
+}
+
+void BattleView::loadHitFlashShader()
+{
+    if (!sf::Shader::isAvailable())
+    {
+        return;
+    }
+
+    if (!hitFlashShader_.loadFromMemory(kHitFlashFragmentShader, sf::Shader::Type::Fragment))
+    {
+        return;
+    }
+
+    hitFlashShader_.setUniform("texture", sf::Shader::CurrentTexture);
+    hitFlashShader_.setUniform("flash_alpha", 1.0f);
+    hitFlashShaderLoaded_ = true;
+}
+
+void BattleView::drawHitFlashSprite(sf::RenderTarget& target, const sf::Texture& texture,
+                                    sf::Vector2f center, float targetHeight,
+                                    float alpha01) const
+{
+    if (!hitFlashShaderLoaded_ || alpha01 <= 0.0f)
+    {
+        return;
+    }
+
+    const sf::Vector2u size = texture.getSize();
+    sf::Sprite sprite(texture);
+    sprite.setOrigin({static_cast<float>(size.x) / 2.0f,
+                      static_cast<float>(size.y) / 2.0f});
+    sprite.setPosition(center);
+    const float scale = targetHeight / static_cast<float>(size.y);
+    sprite.setScale({scale, scale});
+
+    hitFlashShader_.setUniform("flash_alpha", alpha01);
+    sf::RenderStates states;
+    states.shader = &hitFlashShader_;
+    target.draw(sprite, states);
+}
+
+void BattleView::drawEnemyFallback(sf::RenderTarget& target) const
+{
+    sf::CircleShape enemyBody(75.0f, 7);
+    enemyBody.setPosition({950.0f, 235.0f});
+    enemyBody.setFillColor(sf::Color(58, 50, 70, 235));
+    target.draw(enemyBody);
+
+    const float flashAlpha = hitFlashAlpha(enemyFlashTimer_);
+    if (flashAlpha > 0.0f)
+    {
+        sf::CircleShape flashBody(75.0f, 7);
+        flashBody.setPosition({950.0f, 235.0f});
+        flashBody.setFillColor(sf::Color(
+            255, 255, 255, static_cast<std::uint8_t>(255.0f * flashAlpha)));
+        target.draw(flashBody);
     }
 }
 
@@ -865,22 +1027,7 @@ void BattleView::draw(sf::RenderWindow& window, const CombatSystem& combat) cons
     }
 
     drawPlayerVisual(window);
-
-    sf::CircleShape enemyBody(75.0f, 7);
-    enemyBody.setPosition({950.0f, 235.0f});
-    enemyBody.setFillColor(sf::Color(58, 50, 70, 235));
-    if (combat.getEnemy().getId() == "belial" && belialTexture_.getSize().x > 0)
-    {
-        drawEnemyVisual(window, combat.getEnemy());
-    }
-    else if (enemyAnimations_.find(combat.getEnemy().getId()) != enemyAnimations_.end())
-    {
-        drawEnemyVisual(window, combat.getEnemy());
-    }
-    else
-    {
-        window.draw(enemyBody);
-    }
+    drawEnemyVisual(window, combat.getEnemy());
 
     drawPlayerPanel(window, combat.getPlayer());
     drawEnemyPanel(window, combat.getEnemy(), combat.getEnemyIntentDamage());
@@ -981,6 +1128,16 @@ void BattleView::drawPlayerVisual(sf::RenderWindow& window) const
         playerBody.setPosition({155.0f, 245.0f});
         playerBody.setFillColor(sf::Color(128, 48, 42, 225));
         window.draw(playerBody);
+
+        const float flashAlpha = hitFlashAlpha(playerFlashTimer_);
+        if (flashAlpha > 0.0f)
+        {
+            sf::CircleShape flashBody(68.0f, 24);
+            flashBody.setPosition({155.0f, 245.0f});
+            flashBody.setFillColor(sf::Color(
+                255, 255, 255, static_cast<std::uint8_t>(255.0f * flashAlpha)));
+            window.draw(flashBody);
+        }
         return;
     }
 
@@ -995,6 +1152,12 @@ void BattleView::drawPlayerVisual(sf::RenderWindow& window) const
     const float scale = targetHeight / static_cast<float>(size.y);
     sprite.setScale({scale, scale});
     window.draw(sprite);
+
+    const float flashAlpha = hitFlashAlpha(playerFlashTimer_);
+    if (flashAlpha > 0.0f)
+    {
+        drawHitFlashSprite(window, texture, playerFocusPoint(), targetHeight, flashAlpha);
+    }
 }
 
 void BattleView::drawEnemyVisual(sf::RenderWindow& window, const Enemy& enemy) const
@@ -1002,6 +1165,11 @@ void BattleView::drawEnemyVisual(sf::RenderWindow& window, const Enemy& enemy) c
     const sf::Texture* texture = nullptr;
     if (enemy.getId() == "belial")
     {
+        if (belialTexture_.getSize().x == 0)
+        {
+            drawEnemyFallback(window);
+            return;
+        }
         texture = &belialTexture_;
     }
     else
@@ -1009,6 +1177,7 @@ void BattleView::drawEnemyVisual(sf::RenderWindow& window, const Enemy& enemy) c
         auto animationIt = enemyAnimations_.find(enemy.getId());
         if (animationIt == enemyAnimations_.end() || animationIt->second.empty())
         {
+            drawEnemyFallback(window);
             return;
         }
         const std::vector<sf::Texture>& frames = animationIt->second;
@@ -1024,6 +1193,12 @@ void BattleView::drawEnemyVisual(sf::RenderWindow& window, const Enemy& enemy) c
     const float scale = targetHeight / static_cast<float>(size.y);
     sprite.setScale({scale, scale});
     window.draw(sprite);
+
+    const float flashAlpha = hitFlashAlpha(enemyFlashTimer_);
+    if (flashAlpha > 0.0f)
+    {
+        drawHitFlashSprite(window, *texture, enemyFocusPoint(), targetHeight, flashAlpha);
+    }
 }
 
 void BattleView::drawPlayerPanel(sf::RenderWindow& window, const Player& player) const

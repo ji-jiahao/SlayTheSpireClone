@@ -24,7 +24,7 @@ public:
     void setFont(const sf::Font& font);
     void setBackground(const sf::Texture& texture);
     void reset();
-    void update(float deltaSeconds);
+    void update(float deltaSeconds, const CombatSystem& combat);
     void handleMouseMove(sf::Vector2f mousePosition, const CombatSystem& combat);
     void handleMouseClick(sf::Vector2f mousePosition, CombatSystem& combat);
     bool handleKeyPress(sf::Keyboard::Key key, CombatSystem& combat);
@@ -66,6 +66,7 @@ private:
         Card card;
         sf::Vector2f startPos;
         sf::Vector2f targetPos;
+        BattleTargetKind targetKind = BattleTargetKind::Enemy;
         float progress = 0.0f;
         float duration = 0.4f;
         float arcHeight = 72.0f;
@@ -90,6 +91,14 @@ private:
     void startPlayAnimation(const Card& card, sf::Vector2f startPos,
                             BattleTargetKind targetKind);
     void updateActiveVisuals(float deltaSeconds);
+    void updateDamageFlashes(float deltaSeconds, const CombatSystem& combat);
+    float hitFlashAlpha(float timer) const;
+    void loadHitFlashShader();
+    void drawHitFlashSprite(sf::RenderTarget& target, const sf::Texture& texture,
+                            sf::Vector2f center, float targetHeight, float alpha01) const;
+    void drawEnemyFallback(sf::RenderTarget& target) const;
+    bool hasPlayAnimTargeting(BattleTargetKind targetKind) const;
+    void resolvePendingFlash(BattleTargetKind targetKind);
     void updateHoverCardTexture(sf::RenderTexture& texture, const Card& card) const;
     void updateHoverPanel(const Card& card, const sf::FloatRect& bounds);
     void playHoverSound();
@@ -158,4 +167,15 @@ private:
     std::size_t enemyAnimationFrame_ = 0;
     float playerAnimationTimer_ = 0.0f;
     float enemyAnimationTimer_ = 0.0f;
+
+    // 受击白色闪烁：shader 在绘制时以当前纹理生成白色剪影，计时器控制闪烁强度。
+    mutable sf::Shader hitFlashShader_;
+    bool hitFlashShaderLoaded_ = false;
+    float playerFlashTimer_ = 0.0f;
+    float enemyFlashTimer_ = 0.0f;
+    bool playerFlashPending_ = false;
+    bool enemyFlashPending_ = false;
+    int lastPlayerHealth_ = 0;
+    int lastEnemyHealth_ = 0;
+    bool healthSnapshotValid_ = false;
 };
