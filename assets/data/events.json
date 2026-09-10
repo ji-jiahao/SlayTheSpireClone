@@ -65,7 +65,9 @@
     "states": [
       {
         "text": "………………",
-        "image": "assets/images/event/nailong_serious.png"
+        "image": "assets/images/event/nailong_serious.png",
+        "sound": "assets/sounds/nailong_theme.mp3",
+        "loop_sound": 1
       },
       {
         "text": "哈哈哈哈哈哈哈哈",

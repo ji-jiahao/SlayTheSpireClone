@@ -2,7 +2,7 @@
 
 基于 C++17、SFML 3.0.1 和 CMake 的《杀戮尖塔》第一幕铁甲战士简化复刻。
 
-当前仓库以 `main` 的 `61bf568` 为准。这个版本已经把队友的地图、背景音乐、篝火和商店代码合入，但仍然是“可运行的垂直切片”，不是完整第一幕。请先阅读 [实现现状与差距](docs/实现现状与差距.md)，再参考 [统一协作指南](docs/PROJECT_GUIDE.md) 和 [制作计划](docs/制作计划.md)。
+当前工作树基于 `main` 的最新已拉取提交 `b2204f7`。这个版本已经把队友的地图、背景音乐、篝火和商店代码合入，但仍然是“可运行的垂直切片”，不是完整第一幕。请先阅读 [实现现状与差距](docs/实现现状与差距.md)，再参考 [统一协作指南](docs/PROJECT_GUIDE.md) 和 [制作计划](docs/制作计划.md)。
 
 ## 当前可玩闭环
 
@@ -10,18 +10,18 @@
 
 ```text
 主菜单（开始界面背景/音乐）
-→ 8 层地图（每条路线 4 场普通战斗、至少 1 个商店，最后为 Boss）
+→ 9 层地图（每条路线 4 到 6 场非 Boss 战斗、至少 1 个商店，最后为 Boss）
 → 普通战斗、事件、篝火或商店
 → 返回地图
 ```
 
 当前真实行为：
 
-- 战斗当前仍是单敌人，但已支持通过 `EncounterDefinition.enemyId` 选择邪教徒、颚虫、酸液史莱姆、真菌兽、乐加维林和史莱姆老大等敌人原型；胜利后会获得 50 金币，并从三张候选卡牌中选择一张加入牌组。
-- 地图战斗入口会根据当前节点、地图层数和运行种子生成可复现的敌人遭遇：前两层从邪教徒、颚虫、酸液史莱姆中选择，后续普通战斗可加入真菌兽和乐加维林；精英节点固定为乐加维林，Boss 节点固定为贝利亚。
-- 铁甲战士初始状态为 80 HP、3 能量、5 张打击/4 张防御/1 张痛击；战斗胜利触发燃烧之血回血。
+- 战斗当前仍是单敌人，但已支持通过 `EncounterDefinition.enemyId` 选择邪教徒、颚虫、酸液史莱姆、真菌兽、乐加维林和史莱姆老大等敌人原型；胜利后会获得 50 金币，并从三张候选卡牌中最多选择两张加入牌组，也可以只选一张或跳过。
+- 地图战斗入口会根据当前节点、地图层数和运行种子生成可复现的敌人遭遇：前两层从邪教徒、颚虫、酸液史莱姆中选择，后续普通战斗可加入真菌兽；每条路线恰好经过一次精英乐加维林，Boss 节点固定为 230 点生命的贝利亚。
+- 铁甲战士初始状态为 80 HP、3 能量、5 张打击/4 张防御/1 张痛击；普通战斗胜利额外恢复 5 点生命，随后仍触发燃烧之血回血。
 - `CardDatabase` 中有 73 张可获得卡牌定义和升级数据，但运行时牌组默认只使用初始牌组；`assets/data/cards.json` 尚未被加载。
-- 地图节点实际只有战斗、事件、篝火、商店和 Boss；没有宝箱场景，地图生成器当前不会生成精英节点。
+- 地图节点实际包含普通战斗、精英、事件、篝火、商店和 Boss；没有宝箱场景，每条路线固定经过一次乐加维林精英战。
 - 篝火支持一次休息（回复最大生命值的 30%），商店支持购买卡牌和删牌，不再出售遗物。
 - 背景音乐、菜单/地图/篝火/商店资源和事件图片/音频已接入；进入贝利亚 Boss 战时会先从地图短暂淡入地球背景+贝利亚静止立绘的出场画面，出场音效结束或玩家点击/按键后进入可操作战斗；战斗 Boss 贝利亚使用静止立绘，其他敌人使用预生成 PNG 帧动画，卡牌使用第三版 `pixel_v2` 卡面资源。
 - 击败贝利亚后不再进入普通战斗奖励，而是播放黑屏淡出、感谢游玩、制作人名单和最终致辞结算流程，结束后自动返回主菜单；结算期间右下角显示 `可按ESC退出`。
@@ -49,9 +49,9 @@
 
 - 只能沿着 `nextNodeIds` 指向的路径前进。
 - 初始从最底层开始。
-- 节点类型仍然沿用 `Battle`、`Rest`、`Shop`、`Event`、`Boss`。
+- 节点类型仍然沿用 `Battle`、`Elite`、`Rest`、`Shop`、`Event`、`Boss`。
 - 地图显示继续由 `Game::drawMapScene()` 负责，地图高度超过窗口时通过鼠标滚轮上下滚动查看。
-- 当前开局生成 8 层地图：第 1、2 层保留战斗入口，第 3 层固定为商店，第 4、5 层随机选择一层作为事件，其余四层为普通战斗，倒数第二层固定休息，顶层为 Boss；因此每条路线至少经过一个商店，并经过 4 个普通战斗节点，不计 Boss。
+- 当前开局生成 9 层地图：第 1、2 层保留战斗入口，第 3 层固定为商店，第 4 层为必经随机事件，第 5 层按分支随机为事件或普通战斗，第 6 层固定为精英乐加维林，第 8 层休息，顶层为 Boss；因此每条路线至少经过一个商店、恰好一个精英，并经过 1 到 2 个随机事件。
 - 地图连接由 `Game::drawMapScene()` 绘制为弯曲虚线；节点点击使用 `mapScrollOffset_` 进行同一坐标换算，滚动后视觉位置与点击区域保持一致。
 
 ### 战斗
@@ -86,10 +86,10 @@
 - 右键或 `Esc` 取消本次选择。
 - 出牌后播放飞行弧线、命中闪光和碎片效果。
 - 结束回合按钮沿用开始界面的悬停高亮方式，点击时播放 `assets/sounds/end_turn.mp3`。
-- 普通战斗会在 `assets/sounds/battle_normal_2.mp3` 和 `assets/sounds/battle_normal_3.mp3` 之间轮流播放；贝利亚 Boss 首次被击倒前播放 Clark Aboud 的《The Heart》（`assets/sounds/the_heart.mp3`），相信光复活后继续播放 `assets/sounds/heavy_is_the_crown.mp3`。
+- 普通战斗会在 `assets/sounds/battle_normal_2.mp3`、`assets/sounds/battle_normal_3.mp3` 和 `assets/sounds/battle_trance.mp3` 三首曲目之间轮流播放；贝利亚 Boss 首次被击倒前播放 Clark Aboud 的《The Heart》（`assets/sounds/the_heart.mp3`），相信光复活后继续播放 `assets/sounds/heavy_is_the_crown.mp3`。
 - 进入贝利亚 Boss 战时先从地图画面淡入 `assets/images/background/belial_intro_earth.jpg` 和 `assets/images/enemies/belial.png`，同时播放 `assets/sounds/belial_intro.mp3` 与 Boss 战配乐；音效结束或玩家输入后才进入战斗。
 - 贝利亚 Boss 胜利后进入制作名单结算流程，淡黑时开始播放 `assets/sounds/ending_credits.mp3`，流程结束后自动重置运行状态并返回主菜单。
-- 战斗胜利后显示卡牌奖励窗口，可点击三张候选卡牌中的一张加入牌组，也可以点击“跳过”或按 `Esc` 返回地图；金币奖励只在本场胜利结算一次。
+- 战斗胜利后显示卡牌奖励窗口，可点击三张候选卡牌中的一张或两张，再点击“确认领取”加入牌组，也可以不选卡直接点击“跳过”或按 `Esc` 返回地图；金币奖励只在本场胜利结算一次。
 
 战斗中卡牌布局和命中区域由这几个辅助接口支撑：
 
@@ -175,12 +175,12 @@
 
 战斗结算由 `Game` 顶层场景编排，主要接口如下：
 
-- `Game::handleBattleResult()`：监听战斗状态变化，结算燃烧之血、50 金币和奖励候选。
+- `Game::handleBattleResult()`：监听战斗状态变化，结算普通战斗 5 点回血、燃烧之血、50 金币和奖励候选。
 - `Game::prepareBattleReward()`：从 `CardDatabase::createIroncladCardPool()` 使用新的随机种子取三张不同卡牌。
-- `Game::handleBattleRewardClick(sf::Vector2f)`：处理选牌和跳过，选中的卡牌通过 `GameState::addCard()` 加入牌组。
+- `Game::handleBattleRewardClick(sf::Vector2f)`：处理卡牌选中/取消、最多两张、确认领取和跳过，选中的卡牌通过 `GameState::addCard()` 加入牌组。
 - `Game::drawBattleRewardOverlay()`：绘制胜利奖励窗口、卡牌和跳过按钮。
 
-胜利奖励窗口显示在战斗视觉动画结束后；失败战斗仍沿用原有结果覆盖层和返回地图流程。
+胜利奖励窗口显示在战斗视觉动画结束后；玩家可以从三张候选卡中选择一张、两张或直接跳过，选择后点击确认领取；失败战斗仍沿用原有结果覆盖层和返回地图流程。
 
 ### 资源接口
 
@@ -191,7 +191,7 @@
 - `assets/images/background/belial_intro_earth.jpg`：贝利亚 Boss 出场画面背景
 - `assets/images/enemies/<enemy_id>/frame_000.png`：普通敌人逐帧 PNG；原始 GIF 已在资源接入时转换并去除洋红色背景
 - `assets/sounds/belial_intro.mp3`：贝利亚 Boss 出场画面播放一次的开场语音
-- `assets/sounds/battle_normal_2.mp3`、`assets/sounds/battle_normal_3.mp3`：普通战斗轮换播放的两首战斗曲
+- `assets/sounds/battle_normal_2.mp3`、`assets/sounds/battle_normal_3.mp3`、`assets/sounds/battle_trance.mp3`：普通战斗轮换播放的三首战斗曲
 - `assets/sounds/the_heart.mp3`：贝利亚 Boss 第一次死亡前的战斗曲（Clark Aboud — The Heart）
 - `assets/sounds/heavy_is_the_crown.mp3`：贝利亚相信光复活后的战斗曲
 - `assets/sounds/ending_credits.mp3`：击败贝利亚后的结算和制作名单音乐

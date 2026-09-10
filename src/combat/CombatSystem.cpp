@@ -150,6 +150,7 @@ void CombatSystem::startBattle(int currentHealth, std::uint32_t seed,
     discardChoices.clear();
     discardChoicesRemaining = 0;
     resolvingDiscardIndex = -1;
+    enemyTurnInProgress = false;
 
     player.gainBlock(startingBlock);
     player.applyStrength(startingStrength);
@@ -292,10 +293,12 @@ void CombatSystem::endPlayerTurn()
 
     deck.discardHand();
     player.endTurn();
+    enemyTurnInProgress = true;
     enemy.startTurn();
     const bool splitIntent = enemy.getIntent().type == EnemyIntentType::Split;
     resolveEnemyIntent();
     enemy.endTurn();
+    enemyTurnInProgress = false;
 
     if (player.getCurrentHealth() <= 0)
     {
@@ -331,7 +334,7 @@ void CombatSystem::update()
 }
 
 bool CombatSystem::reviveFromLastSafeSnapshot(int bonusStrength, int bonusDexterity,
-                                              bool healToFull)
+                                              bool healToFull, bool startFreshTurn)
 {
     if (!lastSafeSnapshot)
     {
@@ -372,6 +375,7 @@ bool CombatSystem::reviveFromLastSafeSnapshot(int bonusStrength, int bonusDexter
     activeCardId = snapshot.activeCardId;
     discardChoices = snapshot.discardChoices;
     discardChoicesRemaining = snapshot.discardChoicesRemaining;
+    enemyTurnInProgress = snapshot.enemyTurnInProgress;
     resolvingDiscardIndex = -1;
     if (bonusStrength != 0)
     {
@@ -385,7 +389,41 @@ bool CombatSystem::reviveFromLastSafeSnapshot(int bonusStrength, int bonusDexter
     {
         player.heal(player.getMaxHealth());
     }
+    result = BattleResult::Active;
+    if (startFreshTurn)
+    {
+        startFreshPlayerTurnAfterRevival();
+    }
     return true;
+}
+
+void CombatSystem::startFreshPlayerTurnAfterRevival()
+{
+    // 只有敌方行动确实被复活打断时，才结束该行动并推进意图。
+    const EnemyIntent intent = enemy.getIntent();
+    if (enemyTurnInProgress && enemy.getArchetype() == EnemyArchetype::Belial &&
+        intent.damage > 0 &&
+        intent.name.find("光线") != std::string::npos)
+    {
+        enemy.consumeDarkCharge();
+    }
+
+    if (enemyTurnInProgress)
+    {
+        enemy.endTurn();
+        enemy.advanceIntent();
+        enemyTurnInProgress = false;
+    }
+    resolvePlayerStartTurnEffects();
+    if (player.getCurrentHealth() <= 0)
+    {
+        result = BattleResult::Defeat;
+        return;
+    }
+
+    deck.discardHand();
+    drawHand();
+    captureSafeSnapshot();
 }
 
 void CombatSystem::captureSafeSnapshot()
@@ -424,6 +462,7 @@ void CombatSystem::captureSafeSnapshot()
     snapshot->activeCardId = activeCardId;
     snapshot->discardChoices = discardChoices;
     snapshot->discardChoicesRemaining = discardChoicesRemaining;
+    snapshot->enemyTurnInProgress = enemyTurnInProgress;
     lastSafeSnapshot = std::move(snapshot);
 }
 
@@ -436,7 +475,7 @@ const std::vector<Card>& CombatSystem::getHandCards() const
 const Deck& CombatSystem::getDeck() const { return deck; }
 int CombatSystem::getEnemyIntentDamage() const
 {
-    return calculateEnemyDamage(enemy.getIntent().damage);
+    return calculateEnemyDamage(enemy.getIntentDamage());
 }
 BattleResult CombatSystem::getResult() const { return result; }
 
@@ -911,11 +950,12 @@ void CombatSystem::resolveEffect(const CardEffect& effect)
 void CombatSystem::resolveEnemyIntent()
 {
     const EnemyIntent intent = enemy.getIntent();
+    const int perHitDamage = intent.damage > 0 ? getEnemyIntentDamage() : 0;
     for (int hit = 0; hit < std::max(1, intent.hits); ++hit)
     {
         if (intent.damage > 0)
         {
-            takePlayerDamage(calculateEnemyDamage(enemy.getIntentDamage()));
+            takePlayerDamage(perHitDamage);
             if (flameBarrierDamage > 0 && !enemy.isDead())
             {
                 enemy.takeDamage(flameBarrierDamage);
@@ -1167,6 +1207,13 @@ int CombatSystem::losePlayerHealth(int amount, bool causedByCard)
 
 int CombatSystem::takePlayerDamage(int amount)
 {
+    const int potentialUnblockedDamage =
+        std::max(0, amount - player.getBlock());
+    if (potentialUnblockedDamage >= player.getCurrentHealth())
+    {
+        captureSafeSnapshot();
+    }
+
     const int lost = player.takeDamage(amount);
     if (lost > 0)
     {

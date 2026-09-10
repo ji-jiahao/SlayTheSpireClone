@@ -62,17 +62,28 @@ void verifyShopLimitOnPath(
     }
 }
 
-void verifyBattleCountOnPath(
+void verifyPathComposition(
     const MapNode& node,
     const std::unordered_map<int, const MapNode*>& nodeLookup,
-    int battleCount)
+    int battleCount,
+    int eliteCount,
+    int eventCount)
 {
     const int nextBattleCount =
         battleCount + (node.type == MapNodeType::Battle ? 1 : 0);
+    const int nextEliteCount =
+        eliteCount + (node.type == MapNodeType::Elite ? 1 : 0);
+    const int nextEventCount =
+        eventCount + (node.type == MapNodeType::Event ? 1 : 0);
     if (node.nextNodeIds.empty())
     {
-        require(nextBattleCount >= 4 && nextBattleCount <= 6,
-                "每条路线必须经过 4 到 6 个普通战斗节点");
+        require(nextEventCount >= 1 && nextEventCount <= 2,
+                "每条路线必须经过 1 到 2 个随机事件");
+        require(nextEliteCount == 1,
+                "每条路线必须且只能经过 1 个精英节点");
+        require(nextBattleCount + nextEliteCount >= 4 &&
+                    nextBattleCount + nextEliteCount <= 6,
+                "每条路线必须经过 4 到 6 个非 Boss 战斗节点");
         return;
     }
 
@@ -80,7 +91,8 @@ void verifyBattleCountOnPath(
     {
         const auto targetIt = nodeLookup.find(targetId);
         require(targetIt != nodeLookup.end(), "战斗数量检查遇到不存在的节点");
-        verifyBattleCountOnPath(*targetIt->second, nodeLookup, nextBattleCount);
+        verifyPathComposition(*targetIt->second, nodeLookup, nextBattleCount,
+                              nextEliteCount, nextEventCount);
     }
 }
 
@@ -92,6 +104,7 @@ void verifyGeneratedMap(const std::vector<MapNode>& nodes)
     int tripleConnectionNodeCount = 0;
     int battleCount = 0;
     int eventCount = 0;
+    int eliteCount = 0;
     int shopRowCount = 0;
     std::vector<const MapNode*> startNodes;
 
@@ -125,12 +138,15 @@ void verifyGeneratedMap(const std::vector<MapNode>& nodes)
             require(node.type == MapNodeType::Rest,
                     "Boss 前一层只能放休息节点");
         }
+        else if (node.row == maxRow - 2)
+        {
+            require(node.type == MapNodeType::Elite,
+                    "Boss 前两层必须是精英节点");
+        }
         else if (node.row < maxRow - 1)
         {
             require(node.type != MapNodeType::Rest,
                     "普通分支层不能生成休息节点");
-            require(node.type != MapNodeType::Elite,
-                    "当前地图不应生成精英节点");
         }
 
         if (node.type == MapNodeType::Battle)
@@ -140,6 +156,10 @@ void verifyGeneratedMap(const std::vector<MapNode>& nodes)
         else if (node.type == MapNodeType::Event)
         {
             ++eventCount;
+        }
+        else if (node.type == MapNodeType::Elite)
+        {
+            ++eliteCount;
         }
 
         if (node.row == 2)
@@ -156,8 +176,7 @@ void verifyGeneratedMap(const std::vector<MapNode>& nodes)
     require(!startNodes.empty(), "底层必须存在可选起点");
     require(shopRowCount > 0, "地图必须生成至少一个商店层节点");
     require(eventCount > 0, "随机事件节点至少要出现 1 个");
-    require(battleCount == eventCount * 4,
-            "当前地图节奏应保持四层战斗对应一层事件");
+    require(eliteCount > 0, "地图必须生成精英节点");
 
     const auto nodeLookup = buildNodeLookup(nodes);
     for (const auto& node : nodes)
@@ -185,7 +204,7 @@ void verifyGeneratedMap(const std::vector<MapNode>& nodes)
     for (const MapNode* startNode : startNodes)
     {
         verifyShopLimitOnPath(*startNode, nodeLookup, 0);
-        verifyBattleCountOnPath(*startNode, nodeLookup, 0);
+        verifyPathComposition(*startNode, nodeLookup, 0, 0, 0);
     }
 }
 } // namespace
@@ -198,12 +217,16 @@ int main()
         require(generator.generateMap(0).empty(), "0 层地图应为空");
         int earlyServiceCount = 0;
         int earlyShopOrEventMaps = 0;
+        int variedEventRouteMaps = 0;
 
         for (int index = 0; index < 2000; ++index)
         {
-            const std::vector<MapNode> nodes = generator.generateMap(8, index);
+            const std::vector<MapNode> nodes = generator.generateMap(9, index);
             verifyGeneratedMap(nodes);
             bool hasEarlyService = false;
+            bool hasOptionalEvent = false;
+            bool hasOptionalBattle = false;
+            int maxRow = findMaxRow(nodes);
             for (const MapNode& node : nodes)
             {
                 if (node.row >= 2 && node.row < 5 &&
@@ -212,15 +235,29 @@ int main()
                     earlyServiceCount++;
                     hasEarlyService = true;
                 }
+                if (node.row == maxRow - 3 && node.type == MapNodeType::Event)
+                {
+                    hasOptionalEvent = true;
+                }
+                if (node.row == maxRow - 3 && node.type == MapNodeType::Battle)
+                {
+                    hasOptionalBattle = true;
+                }
             }
             if (hasEarlyService)
             {
                 ++earlyShopOrEventMaps;
             }
+            if (hasOptionalEvent && hasOptionalBattle)
+            {
+                ++variedEventRouteMaps;
+            }
         }
 
         require(earlyServiceCount > 0 && earlyShopOrEventMaps > 0,
                 "前段地图应能随机出现事件或商店，不能固定为连续战斗");
+        require(variedEventRouteMaps > 0,
+                "地图应同时存在一个事件和两个事件的不同路线");
 
         std::cout << "地图测试通过。\n";
         return 0;

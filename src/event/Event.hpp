@@ -45,6 +45,7 @@ struct EventState
     std::string soundPath;
     int overlayAlpha = 70;
     bool closeOnClick = false;
+    bool soundLoop = false;
 };
 
 struct EventDefinition

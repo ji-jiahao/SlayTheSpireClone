@@ -886,3 +886,102 @@
 - 资源复制检查：运行目录存在 `belial_intro_earth.jpg`、`belial.png`、`belial_intro.mp3` 和 `final_battle.mp3`。
 - 接口检索检查：`BelialIntro`、`belialIntroTimer_`、`finishBelialIntro()`、`drawBelialIntroScene()` 和 `kBelialIntroTransitionSeconds` 均在预期位置。
 - 启动冒烟：`SlayTheSpire.exe` 运行 3 秒后由本地测试进程结束，未崩溃。
+
+## 本轮追加 - 贝利亚伤害、地图路线与音乐轮换修复
+
+时间：2026-09-09 23:40:00 +08:00
+
+### 编码前检查
+
+- 已查阅 `.codex/context-summary-belial-map-music-event-fix.md`。
+- 分析了 `CombatSystem` 的回合推进、快照恢复和敌人伤害结算，`Enemy` 的贝利亚意图与黑暗蓄能，`MapGenerator` 的分层生成和 `Game::startBattle()` 的音乐轮换入口。
+- 本环境未暴露 `sequential-thinking`、`shrimp-task-manager`、`desktop-commander`、`context7` 和 `github.search_code` 工具；使用本地 PowerShell、`rg`、CMake 与独立测试可执行文件替代，并记录该限制。
+- 将复用 `captureSafeSnapshot()`、`reviveFromLastSafeSnapshot()`、`Enemy::getIntentDamage()`、`MapGenerator::generateMap()` 和 `Game::startBattle()`。
+
+### 实施结果
+
+- 贝利亚遭遇生命值保持为 200。
+- 复活恢复使用快照值拷贝，避免开启新回合时替换快照导致悬空引用。
+- 贝利亚伤害显示和实际结算统一使用 `Enemy::getIntentDamage()`；多段攻击在一次敌方行动开始时固定每段伤害，避免结算过程中的状态变化导致显示与实际不一致。
+- 测试明确覆盖黑暗侵蚀的 2 点真实伤害，以及非致死贝利亚光线攻击后的存活状态。
+- 地图每条可达路线恰好经过一次精英乐加维林，随机事件数量限制为 1 到 2 个。
+- 普通战斗音乐数组包含 `battle_normal_2.mp3`、`battle_normal_3.mp3` 和 `battle_trance.mp3` 三首曲目，按普通战斗入口轮换。
+- 删除 README 中重复的第三首音乐资源说明和测试临时调试输出。
+
+### 编码后声明
+
+- 复用了 `CombatSystem` 既有快照和回合结算边界，没有新增第二套死亡判定。
+- 命名、目录、C++17 和中文注释风格与现有战斗、地图实现保持一致。
+- 对比了 `Enemy::endTurn()`、`CombatSystem::endPlayerTurn()` 和 `Game::handleBattleResult()` 的现有边界，确保复活只在首次贝利亚失败流程中调用。
+- 检查了 `assets/sounds` 与构建输出目录，三首普通战斗音乐资源均存在。
+
+### 本地验证结果
+
+- Debug 构建：通过，使用 `D:\c++\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build --preset debug`。
+- CTest：8/8 通过，使用本机 Visual Studio CMake 附带的 `ctest.exe`。
+- `git diff --check`：通过；仅有 Git 对换行格式的提示，没有空白错误。
+- 三首普通战斗曲均存在于 `out/build/windows-x64/Debug/assets/sounds`，并且 `Game::startBattle()` 使用三元素数组轮换。
+- 启动冒烟：`SlayTheSpire.exe` 启动 3 秒内未崩溃。
+- 回归测试确认：贝利亚光线造成的 39 点伤害不会误判存活状态；黑暗侵蚀造成致命伤害时复活不会额外推进敌人意图。
+
+## 本轮追加 - 双选奖励、奶龙事件音乐与敏捷图标
+
+时间：2026-09-10 00:20:00 +08:00
+
+### 编码前检查
+
+- 已查阅 `.codex/context-summary-reward-nailong-dexterity.md`。
+- 分析了 `Game::prepareBattleReward()`、`handleBattleRewardClick()`、`drawBattleRewardOverlay()`，`EventView::playStateSound()`，以及 `BattleIcons`/`BattleHud` 的状态绘制接口。
+- 复用现有奖励窗口、事件状态音频、状态图标绘制和复活入口，不新增独立的奖励或音频系统。
+- 新音频附件需要复制为 `assets/sounds/nailong_theme.mp3`，由现有 CMake assets 目录规则带入构建输出。
+
+### 计划与验收条件
+
+- 每场普通/精英战斗仍生成 3 张不同候选卡，玩家最多选择 2 张后点击“确认领取”结束奖励。
+- 奶龙事件初始状态循环播放 `assets/sounds/nailong_theme.mp3`，进入第二状态时停止并播放原有笑声音效。
+- 玩家和敌人状态栏增加敏捷图标和数字；敏捷说明可通过悬停查看。
+- 贝利亚相信光复活调用改为 `5, 5`，并由战斗测试验证。
+- Debug 构建、8 个测试、资源存在检查、`git diff --check` 和启动冒烟全部通过。
+## 本轮追加 - 三选二奖励、普通战斗回血与贝利亚数值调整
+
+时间：2026-09-10
+
+### 需求落实
+
+- 战斗胜利奖励窗口改为三张候选卡牌中最多选择两张，允许选择一张、两张或直接跳过；点击卡牌只切换选中状态，点击“确认领取”后才加入牌组。
+- 已选卡牌使用绿色边框，悬停使用黄色边框；确认按钮在至少选中一张时启用。
+- 普通 `MapNodeType::Battle` 胜利后额外恢复 5 点生命，精英战和贝利亚 Boss 不触发该额外恢复；燃烧之血等既有遗物回血继续单独结算。
+- 贝利亚基础生命值调整为 230。
+- 贝利亚相信光复活流程调整为恢复快照生命并获得 5 点力量、5 点敏捷，同时保持新回合恢复参数。
+- 奶龙事件初始状态接入 `assets/sounds/nailong_theme.mp3` 循环播放。
+- 战斗 HUD 增加敏捷图标、数值和悬停说明。
+
+### 复用与集成
+
+- 复用 `GameState::heal()` 处理普通战斗回血，避免重复实现生命上限裁剪。
+- 复用 `RelicSystem::applyBattleVictory()`，额外回血在遗物结算之后执行。
+- 复用 `Game::prepareBattleReward()`、`CardView` 和 `UiHelpers::drawButton()`，未新增奖励场景或第二套卡牌绘制路径。
+- 复用 `CombatSystem::reviveFromLastSafeSnapshot()`，仅调整最终 Boss 流程传入的增益参数。
+
+### 验证计划
+
+- 使用 CMake Debug 构建。
+- 使用 CTest 执行全部 8 个测试。
+- 执行 `git diff --check`。
+- 检查奶龙音乐源文件和构建输出资源。
+- 启动游戏进行 3 秒本地冒烟检查。
+
+### 验证结果
+
+- CMake Debug 构建通过，`SlayTheSpire.exe` 和全部测试目标均成功生成。
+- 首次 CTest 因旧的贝利亚测试夹具仍使用 100 点伤害而失败；将测试伤害调整为 150 点以跨过 230 HP 的半血线后，重新执行全部 8 个测试并通过。
+- CTest 结果：8/8 通过。
+- `git diff --check` 通过；输出的换行提示是 Git 对现有工作树换行格式的提示，不是差异错误。
+- `assets/sounds/nailong_theme.mp3` 和构建目录中的对应资源均存在。
+- 启动冒烟通过，程序启动 3 秒后保持运行，随后由本地验证进程结束。
+
+### 发布打包与上传
+
+- Release 构建通过，运行目录包含 `SlayTheSpire.exe`、4 个 SFML DLL 和完整 `assets` 资源。
+- 本地发布包：`dist/SlayTheSpireClone-20260910-windows-x64.zip`，约 189 MB。
+- `dist/` 已加入 Git 忽略规则，发布包保留在本机供下载，不作为源码提交内容。

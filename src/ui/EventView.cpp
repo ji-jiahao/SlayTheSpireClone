@@ -586,7 +586,7 @@ void EventView::playStateSound(const EventState& state)
     }
 
     sound_.setVolume(100.0f);
-    sound_.setLooping(false);
+    sound_.setLooping(state.soundLoop);
     sound_.play();
 }
 

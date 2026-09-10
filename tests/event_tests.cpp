@@ -24,6 +24,9 @@ int main(int argc, char** argv)
            "assets/sounds/university_event.mp3");
     assert(database.getEvent("university_choice").states[2].soundPath ==
            "assets/sounds/laoda_theme.ogg");
+    assert(database.getEvent("sacred_nailong").states[0].soundPath ==
+           "assets/sounds/nailong_theme.mp3");
+    assert(database.getEvent("sacred_nailong").states[0].soundLoop);
 
     for (int choice = 0; choice < 2; ++choice)
     {

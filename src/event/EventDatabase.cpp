@@ -594,6 +594,7 @@ EventState parseState(const JsonValue& value)
     state.soundPath = optionalString(value, "sound");
     state.overlayAlpha = optionalInt(value, "overlay_alpha", 70);
     state.closeOnClick = optionalInt(value, "close_on_click", 0) != 0;
+    state.soundLoop = optionalInt(value, "loop_sound", 0) != 0;
     return state;
 }
 

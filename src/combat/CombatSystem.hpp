@@ -45,7 +45,8 @@ public:
 
     // 仅用于最终 Boss 的一次性复活：恢复最近一次可能造成致命伤害前的完整战斗状态。
     bool reviveFromLastSafeSnapshot(int bonusStrength = 0, int bonusDexterity = 0,
-                                    bool healToFull = false);
+                                    bool healToFull = false,
+                                    bool startFreshTurn = false);
 
     const Player& getPlayer() const;
     const Enemy& getEnemy() const;
@@ -93,9 +94,11 @@ private:
         std::string activeCardId;
         std::vector<std::size_t> discardChoices;
         int discardChoicesRemaining = 0;
+        bool enemyTurnInProgress = false;
     };
 
     void captureSafeSnapshot();
+    void startFreshPlayerTurnAfterRevival();
     void resolveCardEffects(const Card& card, int repetitions = 1);
     void resolveEffect(const CardEffect& effect);
     void resolveEnemyIntent();
@@ -158,4 +161,5 @@ private:
     std::vector<std::size_t> discardChoices;
     int discardChoicesRemaining = 0;
     int resolvingDiscardIndex = -1;
+    bool enemyTurnInProgress = false;
 };

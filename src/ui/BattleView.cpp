@@ -1258,7 +1258,8 @@ void BattleView::drawPlayerPanel(sf::RenderWindow& window, const Player& player)
         window.draw(energyText);
 
         BattleHud::drawStatuses(window, *font_, {58,150}, player.getStrength(),
-                                player.getWeak(), player.getVulnerable());
+                                player.getWeak(), player.getVulnerable(),
+                                player.getDexterity());
     }
 
     const float hpRatio = maxHealth > 0.0f ? currentHealth / maxHealth : 0.0f;
@@ -1301,7 +1302,7 @@ void BattleView::drawEnemyPanel(sf::RenderWindow& window, const Enemy& enemy,
         window.draw(title);
 
         BattleHud::drawStatuses(window, *font_, {878,150}, enemy.getStrength(),
-                                enemy.getWeak(), enemy.getVulnerable());
+                                enemy.getWeak(), enemy.getVulnerable(), 0);
         BattleHud::drawIntent(window, *font_, enemy, displayedIntentDamage);
     }
 

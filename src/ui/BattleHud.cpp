@@ -158,11 +158,13 @@ bool BattleHud::handleKeyPress(sf::Keyboard::Key key, const CombatSystem& combat
     return true;
 }
 
-void BattleHud::drawStatuses(sf::RenderWindow& w, const sf::Font& f, sf::Vector2f p, int strength, int weak, int vulnerable)
+void BattleHud::drawStatuses(sf::RenderWindow& w, const sf::Font& f, sf::Vector2f p,
+                             int strength, int weak, int vulnerable, int dexterity)
 {
-    const std::array<int,3> values{{strength,weak,vulnerable}};
-    const std::array<Kind,3> icons{{Kind::Strength,Kind::Weak,Kind::Vulnerable}};
-    for (int i = 0; i < 3; ++i)
+    const std::array<int,4> values{{strength, dexterity, weak, vulnerable}};
+    const std::array<Kind,4> icons{{Kind::Strength, Kind::Dexterity, Kind::Weak,
+                                     Kind::Vulnerable}};
+    for (int i = 0; i < 4; ++i)
     {
         BattleIcons::draw(w,icons[i],{p.x+i*85,p.y},30);
         text(w,f,std::to_string(values[i]),19,{p.x+i*85+35,p.y+3},values[i] == 0 ? muted : paper);
@@ -202,12 +204,16 @@ void BattleHud::draw(sf::RenderWindow& w, const sf::Font& f, const CombatSystem&
         std::string tip;
         sf::Vector2f p;
         for (int side = 0; side < 2; ++side)
-            for (int i = 0; i < 3; ++i)
+            for (int i = 0; i < 4; ++i)
             {
                 const sf::FloatRect r{{58.0f+820*side+85*i,150},{78,33}};
                 if (r.contains(mouse_))
                 {
-                    const std::array<const char*,3> descriptions{{"力量：每层增加 1 点攻击伤害。负数则降低伤害。", "虚弱：攻击造成的伤害降低 25%。数字为剩余回合。", "易伤：受到的攻击伤害增加 50%。数字为剩余回合。"}};
+                    const std::array<const char*,4> descriptions{{
+                        "力量：每层增加 1 点攻击伤害。负数则降低伤害。",
+                        "敏捷：每层增加 1 点卡牌格挡。",
+                        "虚弱：攻击造成的伤害降低 25%。数字为剩余回合。",
+                        "易伤：受到的攻击伤害增加 50%。数字为剩余回合。"}};
                     tip = descriptions[i]; p = {side == 0 ? 58.0f : 874.0f,236};
                 }
             }

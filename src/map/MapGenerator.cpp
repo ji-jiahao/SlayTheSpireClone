@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <numeric>
 #include <random>
 #include <unordered_map>
 
@@ -474,9 +475,30 @@ std::vector<MapNode> MapGenerator::generateMap(int rowCount, std::uint32_t seed)
     const int branchCount = rowCount > 1
                                 ? std::uniform_int_distribution<int>(2, 4)(randomEngine)
                                 : 1;
-    const int eventRow = rowCount > 6
-                             ? std::uniform_int_distribution<int>(3, 4)(randomEngine)
-                             : -1;
+    const int bossRow = rowCount - 1;
+    const int restRow = rowCount - 2;
+    const int eliteRow = rowCount - 3;
+    const int mandatoryEventRow = rowCount > 6 ? 3 : -1;
+    const int optionalEventRow =
+        rowCount > 7 && eliteRow - 1 > mandatoryEventRow ? eliteRow - 1 : -1;
+
+    std::vector<int> optionalEventColumns;
+    if (optionalEventRow >= 0 && branchCount > 1)
+    {
+        optionalEventColumns.resize(static_cast<std::size_t>(branchCount));
+        std::iota(optionalEventColumns.begin(), optionalEventColumns.end(), 0);
+        std::shuffle(optionalEventColumns.begin(), optionalEventColumns.end(),
+                     randomEngine);
+        const int optionalEventCount =
+            std::uniform_int_distribution<int>(1, branchCount - 1)(randomEngine);
+        optionalEventColumns.resize(static_cast<std::size_t>(optionalEventCount));
+    }
+
+    const auto isOptionalEventColumn = [&optionalEventColumns](int column)
+    {
+        return std::find(optionalEventColumns.begin(), optionalEventColumns.end(),
+                         column) != optionalEventColumns.end();
+    };
 
     for (int row = 0; row < rowCount; ++row)
     {
@@ -489,19 +511,24 @@ std::vector<MapNode> MapGenerator::generateMap(int rowCount, std::uint32_t seed)
             node.row = row;
             node.column = column;
 
-            if (row == rowCount - 1)
+            if (row == bossRow)
             {
                 node.type = MapNodeType::Boss;
             }
-            else if (row == rowCount - 2)
+            else if (row == restRow)
             {
                 node.type = MapNodeType::Rest;
+            }
+            else if (row == eliteRow)
+            {
+                node.type = MapNodeType::Elite;
             }
             else if (isGuaranteedShopRow(row, rowCount))
             {
                 node.type = MapNodeType::Shop;
             }
-            else if (row == eventRow)
+            else if (row == mandatoryEventRow ||
+                     (row == optionalEventRow && isOptionalEventColumn(column)))
             {
                 node.type = MapNodeType::Event;
             }

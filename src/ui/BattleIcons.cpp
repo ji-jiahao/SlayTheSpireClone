@@ -56,6 +56,13 @@ void draw(sf::RenderTarget& target, Kind kind, sf::Vector2f position, float size
         rect(14,38,19,7,sf::Color(218,165,75));
         polygon({{12,18},{18,21},{22,18},{28,22},{35,18},{34,24},{28,27},{19,25},{15,30}}, sf::Color(255,179,149));
         break;
+    case Kind::Dexterity:
+        polygon({{24,4},{39,19},{32,19},{32,31},{16,31},{16,19},{9,19}},
+                sf::Color(111, 187, 226));
+        polygon({{24,44},{9,29},{16,29},{16,17},{32,17},{32,29},{39,29}},
+                sf::Color(175, 225, 244));
+        rect(20,20,8,10,light);
+        break;
     case Kind::Vulnerable:
     case Kind::Guard:
         polygon({{5,9},{24,3},{43,9},{39,29},{32,39},{24,46},{16,39},{9,29}}, kind == Kind::Guard ? blue : sf::Color(237,159,91));

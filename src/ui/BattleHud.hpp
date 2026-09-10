@@ -13,7 +13,8 @@ public:
     bool handleKeyPress(sf::Keyboard::Key key, const CombatSystem& combat);
     void draw(sf::RenderWindow& window, const sf::Font& font, const CombatSystem& combat) const;
     static void drawStatuses(sf::RenderWindow& window, const sf::Font& font,
-                             sf::Vector2f position, int strength, int weak, int vulnerable);
+                             sf::Vector2f position, int strength, int weak, int vulnerable,
+                             int dexterity = 0);
     static void drawIntent(sf::RenderWindow& window, const sf::Font& font,
                            const Enemy& enemy, int damage);
 private:

@@ -33,9 +33,10 @@ constexpr const char* kRestBackgroundPath = "assets/images/rest/campfire_backgro
 constexpr const char* kMenuMusicPath = "assets/sounds/slay_the_spire.mp3";
 constexpr const char* kMapMusicPath = "assets/sounds/exordium.mp3";
 constexpr const char* kRestMusicPath = "assets/sounds/after_image.mp3";
-constexpr std::array<const char*, 2> kBattleMusicPaths = {{
+constexpr std::array<const char*, 3> kBattleMusicPaths = {{
     "assets/sounds/battle_normal_2.mp3",
     "assets/sounds/battle_normal_3.mp3",
+    "assets/sounds/battle_trance.mp3",
 }};
 constexpr const char* kMerchantMusicPath = "assets/sounds/meet_the_merchant.mp3";
 constexpr const char* kBossMusicPath = "assets/sounds/the_heart.mp3";
@@ -201,7 +202,7 @@ EncounterDefinition encounterForMapNode(const MapNode& node, unsigned int runSee
 {
     if (node.type == MapNodeType::Boss)
     {
-        return {"黑暗奥特曼 贝利亚", 150, 35, "belial"};
+        return {"黑暗奥特曼 贝利亚", 230, 35, "belial"};
     }
 
     if (node.type == MapNodeType::Elite)
@@ -425,6 +426,7 @@ void Game::handleWindowEvent(const sf::Event& event)
             key->code == sf::Keyboard::Key::Escape)
         {
             battleRewardVisible = false;
+            battleRewardSelected.clear();
             showMap();
             statusMessage = "跳过卡牌奖励，获得 50 金币。";
             return;
@@ -628,7 +630,9 @@ void Game::handleMapMouseClick(sf::Vector2f mousePosition)
             return;
         }
 
-        if (node->type == MapNodeType::Battle || node->type == MapNodeType::Boss)
+        if (node->type == MapNodeType::Battle ||
+            node->type == MapNodeType::Elite ||
+            node->type == MapNodeType::Boss)
         {
             startBattle();
             return;
@@ -876,7 +880,7 @@ void Game::startNewRun()
     battleMusicIndex_ = 0;
 
     MapGenerator generator;
-    mapNodes = generator.generateMap(8);
+    mapNodes = generator.generateMap(9);
     mapScrollOffset_ = getMaxMapScrollOffset();
 
     requestSceneChange(SceneType::Map);
@@ -902,6 +906,7 @@ void Game::startBattle(bool preserveRetryState)
     battleView.reset();
     battleRewardCards.clear();
     battleRewardVisible = false;
+    battleRewardSelected.clear();
     hoveredBattleRewardIndex = -1;
     belialTransitionState_ = BelialTransitionState::Inactive;
     belialTransitionTimer_ = 0.0f;
@@ -1069,6 +1074,7 @@ void Game::startEndingSequence()
 {
     battleRewardVisible = false;
     battleRewardCards.clear();
+    battleRewardSelected.clear();
     belialHeartbeatSound_.stop();
     belialChargeSound_.stop();
     belialIntroSound_.stop();
@@ -1099,9 +1105,24 @@ void Game::handleBattleResult()
         }
 
         relicHealing = relicSystem.applyBattleVictory(state);
+        int ordinaryBattleHealing = 0;
+        const std::optional<MapNode> currentNode =
+            findNodeById(mapNodes, state.currentNodeId);
+        if (currentNode.has_value() && currentNode->type == MapNodeType::Battle)
+        {
+            ordinaryBattleHealing = state.heal(5);
+        }
         state.gainGold(50);
         prepareBattleReward();
-        statusMessage = "战斗胜利";
+        if (ordinaryBattleHealing > 0)
+        {
+            statusMessage = "战斗胜利，恢复 " +
+                            std::to_string(ordinaryBattleHealing) + " 点生命";
+        }
+        else
+        {
+            statusMessage = "战斗胜利，生命已满";
+        }
         playMusic(kSlainMusicPath, false);
     }
     else
@@ -1162,6 +1183,7 @@ void Game::retryCurrentBattle()
     belialReviveUsed_ = false;
     battleRewardVisible = false;
     battleRewardCards.clear();
+    battleRewardSelected.clear();
     battleView.reset();
     combat = CombatSystem();
     state.reset();
@@ -1248,7 +1270,7 @@ void Game::updateBelialTransition(float deltaSeconds)
     case BelialTransitionState::LightBurst:
         if (belialTransitionTimer_ >= kBelialLightSeconds)
         {
-            if (!combat.reviveFromLastSafeSnapshot(10, 10, true))
+            if (!combat.reviveFromLastSafeSnapshot(5, 5, true, true))
             {
                 state.currentHealth = 0;
                 showGameOver();
@@ -1304,6 +1326,7 @@ void Game::handleBelialTransitionClick(sf::Vector2f mousePosition)
 void Game::prepareBattleReward()
 {
     battleRewardCards.clear();
+    battleRewardSelected.clear();
     hoveredBattleRewardIndex = -1;
 
     std::vector<Card> pool;
@@ -1340,6 +1363,7 @@ void Game::prepareBattleReward()
         }
     }
 
+    battleRewardSelected.assign(battleRewardCards.size(), false);
     battleRewardVisible = !battleRewardCards.empty();
 }
 
@@ -1363,6 +1387,12 @@ void Game::updateBattleRewardHover(sf::Vector2f mousePosition)
     if (battleRewardSkipBounds().contains(mousePosition))
     {
         hoveredBattleRewardIndex = -2;
+        return;
+    }
+
+    if (battleRewardConfirmBounds().contains(mousePosition))
+    {
+        hoveredBattleRewardIndex = -3;
     }
 }
 
@@ -1380,17 +1410,63 @@ void Game::handleBattleRewardClick(sf::Vector2f mousePosition)
             continue;
         }
 
-        const std::string cardName = battleRewardCards[index].name;
-        state.addCard(battleRewardCards[index].id);
+        if (index >= battleRewardSelected.size())
+        {
+            return;
+        }
+
+        if (battleRewardSelected[index])
+        {
+            battleRewardSelected[index] = false;
+            return;
+        }
+
+        if (battleRewardSelectionCount() >= 2)
+        {
+            statusMessage = "最多选择两张卡牌。";
+            return;
+        }
+
+        battleRewardSelected[index] = true;
+        return;
+    }
+
+    if (battleRewardConfirmBounds().contains(mousePosition))
+    {
+        const std::size_t selectionCount = battleRewardSelectionCount();
+        if (selectionCount == 0)
+        {
+            return;
+        }
+
+        std::vector<std::string> selectedNames;
+        for (std::size_t index = 0; index < battleRewardCards.size(); ++index)
+        {
+            if (!battleRewardSelected[index])
+            {
+                continue;
+            }
+
+            state.addCard(battleRewardCards[index].id);
+            selectedNames.push_back(battleRewardCards[index].name);
+        }
+
         battleRewardVisible = false;
+        battleRewardSelected.clear();
         showMap();
-        statusMessage = "已将「" + cardName + "」加入牌组，并获得 50 金币。";
+        statusMessage = selectedNames.size() == 1
+                            ? "已将「" + selectedNames[0] +
+                                  "」加入牌组，并获得 50 金币。"
+                            : "已将「" + selectedNames[0] + "」和「" +
+                                  selectedNames[1] +
+                                  "」加入牌组，并获得 50 金币。";
         return;
     }
 
     if (battleRewardSkipBounds().contains(mousePosition))
     {
         battleRewardVisible = false;
+        battleRewardSelected.clear();
         showMap();
         statusMessage = "跳过卡牌奖励，获得 50 金币。";
         return;
@@ -1399,6 +1475,7 @@ void Game::handleBattleRewardClick(sf::Vector2f mousePosition)
     if (sf::FloatRect({70.0f, 620.0f}, {240.0f, 60.0f}).contains(mousePosition))
     {
         battleRewardVisible = false;
+        battleRewardSelected.clear();
         retryCurrentBattle();
     }
 }
@@ -1700,9 +1777,20 @@ sf::FloatRect Game::battleRewardCardBounds(std::size_t index) const
             cardSize};
 }
 
+sf::FloatRect Game::battleRewardConfirmBounds() const
+{
+    return {{680.0f, 620.0f}, {220.0f, 60.0f}};
+}
+
 sf::FloatRect Game::battleRewardSkipBounds() const
 {
     return {{930.0f, 620.0f}, {220.0f, 60.0f}};
+}
+
+std::size_t Game::battleRewardSelectionCount() const
+{
+    return static_cast<std::size_t>(
+        std::count(battleRewardSelected.begin(), battleRewardSelected.end(), true));
 }
 
 void Game::drawBattleRewardOverlay()
@@ -1732,7 +1820,7 @@ void Game::drawBattleRewardOverlay()
     UiHelpers::drawCenteredText(window, font, "战斗胜利", 42,
                                 {{230.0f, 98.0f}, {820.0f, 54.0f}},
                                 sf::Color(246, 220, 150));
-    UiHelpers::drawCenteredText(window, font, "获得 50 金币，选择一张卡牌加入牌组",
+    UiHelpers::drawCenteredText(window, font, "获得 50 金币，最多从三张卡牌中选择两张",
                                 24, {{230.0f, 156.0f}, {820.0f, 40.0f}},
                                 sf::Color(232, 224, 204));
 
@@ -1751,21 +1839,29 @@ void Game::drawBattleRewardOverlay()
         sf::RectangleShape outline(bounds.size);
         outline.setPosition(bounds.position);
         outline.setFillColor(sf::Color::Transparent);
-        outline.setOutlineColor(index == static_cast<std::size_t>(hoveredBattleRewardIndex)
-                                   ? sf::Color(255, 230, 126)
-                                   : sf::Color(145, 120, 76));
-        outline.setOutlineThickness(index == static_cast<std::size_t>(hoveredBattleRewardIndex)
-                                        ? 5.0f
-                                        : 2.0f);
+        const bool selected = index < battleRewardSelected.size() &&
+                              battleRewardSelected[index];
+        const bool hovered =
+            index == static_cast<std::size_t>(hoveredBattleRewardIndex);
+        outline.setOutlineColor(selected ? sf::Color(116, 224, 140)
+                                         : hovered ? sf::Color(255, 230, 126)
+                                                   : sf::Color(145, 120, 76));
+        outline.setOutlineThickness(selected || hovered ? 5.0f : 2.0f);
         window.draw(outline);
     }
 
+    const bool canConfirm = battleRewardSelectionCount() > 0;
+    UiHelpers::drawButton(window, font, battleRewardConfirmBounds(), "确认领取",
+                          canConfirm, hoveredBattleRewardIndex == -3);
     UiHelpers::drawButton(window, font, battleRewardSkipBounds(), "跳过",
                           true, hoveredBattleRewardIndex == -2);
     UiHelpers::drawButton(window, font, {{70.0f, 620.0f}, {240.0f, 60.0f}},
                           "重试一次", true, false);
-    UiHelpers::drawCenteredText(window, font, "点击卡牌领取，或跳过本次卡牌奖励",
-                                18, {{240.0f, 575.0f}, {800.0f, 34.0f}},
+    UiHelpers::drawCenteredText(
+        window, font,
+        "已选 " + std::to_string(battleRewardSelectionCount()) +
+            "/2，可选一张或两张，也可以跳过",
+        18, {{240.0f, 575.0f}, {800.0f, 34.0f}},
                                 sf::Color(190, 186, 174));
 }
 

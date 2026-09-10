@@ -87,7 +87,9 @@ private:
     void drawBelialIntroScene();
     void drawEndingSequence();
     sf::FloatRect battleRewardCardBounds(std::size_t index) const;
+    sf::FloatRect battleRewardConfirmBounds() const;
     sf::FloatRect battleRewardSkipBounds() const;
+    std::size_t battleRewardSelectionCount() const;
     bool loadRestResources();
     bool loadShopResources();
     bool playMusic(const std::string& path, bool looping);
@@ -147,6 +149,7 @@ private:
     bool shopBackgroundLoaded = false;
     bool battleRewardVisible = false;
     int hoveredBattleRewardIndex = -1;
+    std::vector<bool> battleRewardSelected;
     std::size_t battleMusicIndex_ = 0;
     float mapScrollOffset_ = 0.0f;
     GameState battleStartState_;

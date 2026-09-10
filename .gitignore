@@ -17,6 +17,7 @@
 *.exp
 *.pdb
 *.ilk
+/dist/
 
 # User-specific Visual Studio files
 *.user

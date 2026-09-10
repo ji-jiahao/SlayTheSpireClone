@@ -553,15 +553,15 @@ int main()
     {
         CombatSystem combat;
         combat.startBattle(80, 29, CardDatabase::createStarterDeck(),
-                           {"黑暗奥特曼 贝利亚", 150, 35, "belial"}, 0, 0);
+                           {"黑暗奥特曼 贝利亚", 230, 35, "belial"}, 0, 0);
         assert(combat.getEnemy().getId() == "belial");
-        assert(combat.getEnemy().getMaxHealth() == 150);
+        assert(combat.getEnemy().getMaxHealth() == 230);
         assert(combat.getEnemy().getIntent().name == "终极战斗仪·守");
     }
 
     {
-        Enemy belial("belial", "黑暗奥特曼 贝利亚", 150, 30);
-        belial.takeDamage(75);
+        Enemy belial("belial", "黑暗奥特曼 贝利亚", 230, 30);
+        belial.takeDamage(150);
         assert(belial.getDarkCharge() == 3);
         assert(belial.getStrength() == 2);
         assert(belial.getBlock() == 15);
@@ -572,11 +572,59 @@ int main()
     {
         CombatSystem combat;
         combat.startBattle(20, 31, CardDatabase::createStarterDeck(),
-                           {"黑暗奥特曼 贝利亚", 150, 35, "belial"}, 0, 0);
+                           {"黑暗奥特曼 贝利亚", 230, 35, "belial"}, 0, 0);
         assert(combat.reviveFromLastSafeSnapshot(10, 10, true));
         assert(combat.getPlayer().getCurrentHealth() == combat.getPlayer().getMaxHealth());
         assert(combat.getPlayer().getStrength() == 10);
         assert(combat.getPlayer().getDexterity() == 10);
+    }
+
+    {
+        CombatSystem combat;
+        combat.startBattle(80, 32, CardDatabase::createStarterDeck(),
+                           {"黑暗奥特曼 贝利亚", 230, 35, "belial"}, 0, 0);
+        combat.endPlayerTurn();
+        assert(combat.getPlayer().getCurrentHealth() == 80);
+        combat.endPlayerTurn();
+        assert(combat.getPlayer().getCurrentHealth() == 78);
+        assert(combat.getEnemy().getIntent().name == "帝斯修姆光线");
+        assert(combat.getEnemyIntentDamage() == 39);
+        combat.endPlayerTurn();
+        assert(combat.getResult() == BattleResult::Active);
+        assert(combat.getPlayer().getCurrentHealth() == 39);
+    }
+
+    {
+        CombatSystem combat;
+        combat.startBattle(20, 33, CardDatabase::createStarterDeck(),
+                           {"黑暗奥特曼 贝利亚", 230, 35, "belial"}, 0, 0);
+        combat.endPlayerTurn();
+        combat.endPlayerTurn();
+        combat.endPlayerTurn();
+        assert(combat.getResult() == BattleResult::Defeat);
+        assert(combat.reviveFromLastSafeSnapshot(5, 5, true, true));
+        assert(combat.getResult() == BattleResult::Active);
+        assert(combat.getPlayer().getCurrentHealth() == 80);
+        assert(combat.getPlayer().getStrength() == 5);
+        assert(combat.getPlayer().getDexterity() == 5);
+        assert(combat.getPlayer().getCurrentEnergy() == 3);
+        assert(combat.getHandCards().size() == 5);
+        assert(combat.getEnemy().getIntent().name == "死亡之镰·改");
+    }
+
+    {
+        CombatSystem combat;
+        combat.startBattle(1, 34, CardDatabase::createStarterDeck(),
+                           {"黑暗奥特曼 贝利亚", 230, 35, "belial"}, 0, 0);
+        combat.endPlayerTurn();
+        combat.endPlayerTurn();
+        assert(combat.getResult() == BattleResult::Defeat);
+        assert(combat.reviveFromLastSafeSnapshot(5, 5, true, true));
+        assert(combat.getResult() == BattleResult::Active);
+        assert(combat.getPlayer().getCurrentHealth() == 80);
+        assert(combat.getPlayer().getStrength() == 5);
+        assert(combat.getPlayer().getDexterity() == 5);
+        assert(combat.getEnemy().getIntent().name == "黑暗护盾");
     }
 
     {
