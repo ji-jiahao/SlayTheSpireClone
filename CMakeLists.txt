@@ -143,6 +143,7 @@ if(BUILD_TESTING)
     add_executable(BattleCastTests tests/battle_cast_tests.cpp)
     target_link_libraries(BattleCastTests PRIVATE ui card_system)
     add_test(NAME BattleCastTests COMMAND BattleCastTests)
+    set_tests_properties(BattleCastTests PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
     add_executable(RelicTests tests/relic_tests.cpp)
     target_link_libraries(RelicTests PRIVATE relic_system)

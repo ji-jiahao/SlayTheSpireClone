@@ -1088,7 +1088,7 @@ void Game::startEndingSequence()
 void Game::handleBattleResult()
 {
     const BattleResult result = combat.getResult();
-    if (result == BattleResult::Active || result == handledResult)
+    if (result == BattleResult::Active || result == handledResult || battleView.isVisualLocked())
     {
         return;
     }

@@ -9,6 +9,7 @@
 #include <SFML/Audio.hpp>
 #include <SFML/Graphics.hpp>
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -25,7 +26,7 @@ public:
     void setFont(const sf::Font& font);
     void setBackground(const sf::Texture& texture);
     void reset();
-    void update(float deltaSeconds, const CombatSystem& combat);
+    void update(float deltaSeconds, CombatSystem& combat);
     void handleMouseMove(sf::Vector2f mousePosition, const CombatSystem& combat);
     void handleMouseClick(sf::Vector2f mousePosition, CombatSystem& combat);
     bool handleKeyPress(sf::Keyboard::Key key, CombatSystem& combat);
@@ -68,19 +69,21 @@ private:
         sf::Vector2f startPos;
         sf::Vector2f targetPos;
         BattleTargetKind targetKind = BattleTargetKind::Enemy;
-        float progress = 0.0f;
-        float duration = 0.4f;
-        float arcHeight = 72.0f;
-        float rotationStart = -12.0f;
-        float rotationEnd = 0.0f;
-        bool finished = false;
+        BattleCast::ExitKind exit = BattleCast::ExitKind::Discard;
+        std::shared_ptr<sf::RenderTexture> texture;
+        int handIndex = -1;
+        float elapsed = 0.0f;
+        float startScale = 1.0f;
+        bool committed = false;
     };
 
     struct HitBurst
     {
         sf::Vector2f position;
         float progress = 0.0f;
-        float duration = 0.24f;
+        float duration = 0.42f;
+        BattleCast::EffectKind kind = BattleCast::EffectKind::Slash;
+        int amount = 0;
     };
 
     void beginHoverVisual(const std::vector<Card>& hand, int handIndex,
@@ -89,22 +92,20 @@ private:
     void beginTargetSelection(const std::vector<Card>& hand, int handIndex,
                               const sf::FloatRect& bounds);
     void clearTargetSelection();
-    void startPlayAnimation(const Card& card, sf::Vector2f startPos,
-                            BattleTargetKind targetKind);
-    void updateActiveVisuals(float deltaSeconds);
+    void startPlayAnimation(const Card& card, sf::Vector2f startPos, float startScale,
+                            int handIndex, const CombatSystem& combat);
+    void updateActiveVisuals(float deltaSeconds, CombatSystem& combat);
     void updateDamageFlashes(float deltaSeconds, const CombatSystem& combat);
     float hitFlashAlpha(float timer) const;
     void loadHitFlashShader();
     void drawHitFlashSprite(sf::RenderTarget& target, const sf::Texture& texture,
                             sf::Vector2f center, float targetHeight, float alpha01) const;
     void drawEnemyFallback(sf::RenderTarget& target) const;
-    bool hasPlayAnimTargeting(BattleTargetKind targetKind) const;
-    void resolvePendingFlash(BattleTargetKind targetKind);
+    bool hasPendingPlay() const;
     void updateHoverCardTexture(sf::RenderTexture& texture, const Card& card) const;
     void updateHoverPanel(const Card& card, const sf::FloatRect& bounds);
     void playHoverSound();
     void playEndTurnSound();
-    std::string cardTypeLabel(CardType type) const;
     void drawHoverVisual(sf::RenderTarget& target, const HoverCardVisual& visual,
                          const sf::RenderTexture& texture, bool isHovered) const;
     void drawHandCard(sf::RenderTarget& target, const Card& card, sf::Vector2f position,
@@ -145,6 +146,7 @@ private:
     HoverCardVisual fadingCard_;
     SelectedCardVisual selectedCard_;
     bool selectedTargetHovered_ = false;
+    sf::Vector2f mousePosition_;
     sf::RenderTexture hoveredCardTexture_;
     sf::RenderTexture fadingCardTexture_;
     sf::RectangleShape hoverPanelBackground_;
@@ -160,7 +162,6 @@ private:
     bool endTurnHovered_ = false;
     std::vector<PlayAnim> activePlays_;
     std::vector<HitBurst> activeBursts_;
-    float selectionTimer_ = 0.0f;
     sf::Texture belialTexture_;
     std::vector<sf::Texture> playerFrames_;
     std::unordered_map<std::string, std::vector<sf::Texture>> enemyAnimations_;
@@ -174,8 +175,6 @@ private:
     bool hitFlashShaderLoaded_ = false;
     float playerFlashTimer_ = 0.0f;
     float enemyFlashTimer_ = 0.0f;
-    bool playerFlashPending_ = false;
-    bool enemyFlashPending_ = false;
     int lastPlayerHealth_ = 0;
     int lastEnemyHealth_ = 0;
     bool healthSnapshotValid_ = false;

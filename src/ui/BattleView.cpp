@@ -24,17 +24,13 @@ constexpr float kHoverLift = -20.0f;
 constexpr float kHoverScale = 1.15f;
 constexpr float kSelectionLift = -15.0f;
 constexpr float kSelectionScale = 1.10f;
-constexpr float kSelectionTimeoutSeconds = 5.0f;
-constexpr float kPlayArcHeight = 72.0f;
-constexpr float kPlayScaleEnd = 0.84f;
 constexpr const char* kHoverCardSoundPath = "assets/sounds/card_select.mp3";
 constexpr const char* kAttackCardSoundPath = "assets/sounds/card_attack.mp3";
 constexpr const char* kDefenseCardSoundPath = "assets/sounds/card_defense.mp3";
 constexpr const char* kEndTurnSoundPath = "assets/sounds/end_turn.mp3";
 constexpr float kPlayerFrameSeconds = 0.10f;
 constexpr float kEnemyFrameSeconds = 0.10f;
-constexpr float kHitFlashDurationSeconds = 0.36f;
-constexpr float kHitFlashBlinkCount = 3.0f;
+constexpr float kHitFlashDurationSeconds = 0.18f;
 
 // 受击闪烁所用的片段着色器：把当前纹理采样成白色剪影（保留 alpha），
 // flash_alpha 控制白色透明度，配合计时器实现“白色图像”的闪烁间隔。
@@ -227,23 +223,22 @@ void BattleView::reset()
     selectedTargetHovered_ = false;
     activePlays_.clear();
     activeBursts_.clear();
-    selectionTimer_ = 0.0f;
     hoverPanelVisible_ = false;
     endTurnHovered_ = false;
     playerAnimationTimer_ = 0.0f;
     playerAnimationFrame_ = 0;
     playerFlashTimer_ = 0.0f;
     enemyFlashTimer_ = 0.0f;
-    playerFlashPending_ = false;
-    enemyFlashPending_ = false;
     lastPlayerHealth_ = 0;
     lastEnemyHealth_ = 0;
     healthSnapshotValid_ = false;
 }
 
-void BattleView::update(float deltaSeconds, const CombatSystem& combat)
+void BattleView::update(float deltaSeconds, CombatSystem& combat)
 {
-    updateActiveVisuals(deltaSeconds);
+    if (!std::isfinite(deltaSeconds)) return;
+    deltaSeconds = std::max(0.0f, deltaSeconds);
+    updateActiveVisuals(deltaSeconds, combat);
     // Refresh cached hover artwork even when the mouse stays still as costs change.
     auto refresh = [&](HoverCardVisual& visual, sf::RenderTexture& texture, bool tooltip) {
         if (!visual.active || visual.handIndex < 0 ||
@@ -281,6 +276,8 @@ void BattleView::update(float deltaSeconds, const CombatSystem& combat)
 
 void BattleView::handleMouseMove(sf::Vector2f mousePosition, const CombatSystem& combat)
 {
+    mousePosition_ = mousePosition;
+    if (hasPendingPlay()) return;
     if (hud_.handleMouseMove(mousePosition) || combat.hasPendingDiscardChoice())
     {
         clearHoverVisual();
@@ -321,6 +318,9 @@ void BattleView::handleMouseMove(sf::Vector2f mousePosition, const CombatSystem&
 
 void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& combat)
 {
+    if (hasPendingPlay()) return;
+    const float hoveredProgress = hoveredCard_.active ? hoveredCard_.progress : 0.0f;
+    const int hoveredIndex = hoveredCard_.handIndex;
     clearHoverVisual();
 
     if (hud_.handleMouseClick(mousePosition, combat))
@@ -341,15 +341,11 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
         {
             const Card playedCard = CardPresentation::forCombat(
                 combat.getHandCards()[selectedCard_.handIndex], combat);
-            const sf::Vector2f startPos = selectedCard_.bounds.position;
-            const BattleTargetKind targetKind = selectedCard_.targetKind;
-
-            if (combat.playCard(selectedCard_.handIndex))
-            {
-                startPlayAnimation(playedCard, startPos, targetKind);
-                playCardSound(playedCard);
-            }
-
+            const float eased = BattleHover::easeOutCubic(selectedCard_.progress);
+            startPlayAnimation(playedCard,
+                               selectedCard_.bounds.position + sf::Vector2f{0.0f, kSelectionLift * eased},
+                               1.0f + (kSelectionScale - 1.0f) * eased,
+                               selectedCard_.handIndex, combat);
             clearTargetSelection();
             return;
         }
@@ -359,13 +355,10 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
 
     const std::vector<Card>& hand = combat.getHandCards();
     const auto layouts = handLayouts(hand);
-    for (const BattleHover::HandCardLayout& layout : layouts)
+    const int clickedIndex = BattleHover::pickHoveredCardIndex(mousePosition, layouts);
+    if (clickedIndex >= 0)
     {
-        if (!layout.bounds.contains(mousePosition))
-        {
-            continue;
-        }
-
+        const auto& layout = layouts[static_cast<std::size_t>(clickedIndex)];
         const Card card = hand[static_cast<std::size_t>(layout.handIndex)];
         const Card displayCard = CardPresentation::forCombat(card, combat);
         const int cardCost = combat.getPlayableCardCost(card);
@@ -384,15 +377,17 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
             beginTargetSelection(CardPresentation::handForCombat(combat), layout.handIndex, layout.bounds);
             updateSelectionTargetHover(mousePosition);
         }
-        else if (combat.playCard(layout.handIndex))
+        else
         {
-            startPlayAnimation(displayCard, layout.bounds.position, BattleCast::resolveTargetKind(card));
-            playCardSound(card);
+            const float eased = hoveredIndex == clickedIndex
+                                    ? BattleHover::easeOutCubic(hoveredProgress) : 0.0f;
+            startPlayAnimation(displayCard, layout.bounds.position + sf::Vector2f{0.0f, kHoverLift * eased},
+                               1.0f + (kHoverScale - 1.0f) * eased, layout.handIndex, combat);
         }
         return;
     }
 
-    if (getEndTurnButtonBounds().contains(mousePosition))
+    if (getEndTurnButtonBounds().contains(mousePosition) && activePlays_.empty())
     {
         combat.endPlayerTurn();
         playEndTurnSound();
@@ -401,6 +396,7 @@ void BattleView::handleMouseClick(sf::Vector2f mousePosition, CombatSystem& comb
 
 bool BattleView::handleKeyPress(sf::Keyboard::Key key, CombatSystem& combat)
 {
+    if (hasPendingPlay()) return true;
     if (hud_.handleKeyPress(key, combat)) return true;
     if (handState_ != HandState::SelectingTarget)
     {
@@ -494,6 +490,7 @@ void BattleView::beginTargetSelection(const std::vector<Card>& hand, int handInd
                                       const sf::FloatRect& bounds)
 {
     clearHoverVisual();
+    fadingCard_ = {};
 
     selectedCard_.handIndex = handIndex;
     selectedCard_.card = hand[static_cast<std::size_t>(handIndex)];
@@ -503,7 +500,6 @@ void BattleView::beginTargetSelection(const std::vector<Card>& hand, int handInd
     selectedCard_.active = true;
     handState_ = HandState::SelectingTarget;
     selectedTargetHovered_ = false;
-    selectionTimer_ = 0.0f;
 }
 
 void BattleView::clearTargetSelection()
@@ -512,23 +508,43 @@ void BattleView::clearTargetSelection()
     selectedCard_.handIndex = -1;
     selectedCard_.progress = 0.0f;
     selectedTargetHovered_ = false;
-    selectionTimer_ = 0.0f;
     handState_ = activePlays_.empty() ? HandState::Idle : HandState::Playing;
 }
 
-void BattleView::startPlayAnimation(const Card& card, sf::Vector2f startPos,
-                                    BattleTargetKind targetKind)
+bool BattleView::hasPendingPlay() const
 {
+    return std::any_of(activePlays_.begin(), activePlays_.end(),
+                       [](const PlayAnim& anim) { return !anim.committed; });
+}
+
+void BattleView::startPlayAnimation(const Card& card, sf::Vector2f startPos, float startScale,
+                                    int handIndex, const CombatSystem& combat)
+{
+    // 施放纹理持有独立快照，手牌变化后不留下旧悬停图，也不引用失效的卡牌。
+    hoveredCard_ = {};
+    fadingCard_ = {};
+    if (!healthSnapshotValid_)
+    {
+        lastPlayerHealth_ = combat.getPlayer().getCurrentHealth();
+        lastEnemyHealth_ = combat.getEnemy().getCurrentHealth();
+        healthSnapshotValid_ = true;
+    }
     PlayAnim anim;
     anim.card = card;
     anim.startPos = {startPos.x, startPos.y};
-    anim.targetPos = getTargetFocusPoint(targetKind);
-    anim.targetKind = targetKind;
-    activePlays_.push_back(anim);
+    anim.startScale = startScale;
+    anim.handIndex = handIndex;
+    anim.targetKind = BattleCast::resolveTargetKind(card);
+    anim.targetPos = getTargetFocusPoint(anim.targetKind);
+    anim.exit = card.type == CardType::Power ? BattleCast::ExitKind::Power :
+                combat.willExhaustCard(card) ? BattleCast::ExitKind::Exhaust : BattleCast::ExitKind::Discard;
+    anim.texture = std::make_shared<sf::RenderTexture>(sf::Vector2u{160, 220});
+    updateHoverCardTexture(*anim.texture, card);
+    activePlays_.push_back(std::move(anim));
     handState_ = HandState::Playing;
 }
 
-void BattleView::updateActiveVisuals(float deltaSeconds)
+void BattleView::updateActiveVisuals(float deltaSeconds, CombatSystem& combat)
 {
     const float hoverStep = std::min(1.0f, deltaSeconds / kHoverTransitionSeconds);
 
@@ -550,38 +566,50 @@ void BattleView::updateActiveVisuals(float deltaSeconds)
     if (selectedCard_.active)
     {
         selectedCard_.progress = std::min(1.0f, selectedCard_.progress + hoverStep);
-        selectionTimer_ += deltaSeconds;
-        if (selectionTimer_ >= kSelectionTimeoutSeconds)
-        {
-            clearTargetSelection();
-        }
     }
 
+    // 先推进既有反馈；本帧新命中的反馈保留首帧，卡顿也不会直接吞掉命中特效。
+    for (HitBurst& burst : activeBursts_)
+    {
+        burst.progress = std::min(1.0f, burst.progress + deltaSeconds / burst.duration);
+    }
     for (PlayAnim& anim : activePlays_)
     {
-        if (anim.finished)
+        anim.elapsed += deltaSeconds;
+        if (!anim.committed && anim.elapsed >= BattleCast::kCommitSeconds)
         {
-            continue;
-        }
-
-        anim.progress = std::min(1.0f, anim.progress + deltaSeconds / anim.duration);
-        if (anim.progress >= 1.0f)
-        {
-            anim.finished = true;
-            activeBursts_.push_back({anim.targetPos});
-            resolvePendingFlash(anim.targetKind);
+            anim.committed = true;
+            const int health = combat.getEnemy().getCurrentHealth();
+            const int block = combat.getPlayer().getBlock();
+            const int enemyBlock = combat.getEnemy().getBlock();
+            const auto& hand = combat.getHandCards();
+            if (anim.handIndex < 0 || static_cast<std::size_t>(anim.handIndex) >= hand.size() ||
+                hand[anim.handIndex].id != anim.card.id || !combat.playCard(anim.handIndex))
+            {
+                anim.elapsed = BattleCast::kFinishSeconds;
+                continue;
+            }
+            // 防止大时间步在提交结算的同一帧也移除牌面。
+            anim.elapsed = BattleCast::kCommitSeconds;
+            const auto kind = BattleCast::resolveEffectKind(anim.card);
+            const int damage = std::max(0, health - combat.getEnemy().getCurrentHealth());
+            const int blockGain = std::max(0, combat.getPlayer().getBlock() - block);
+            const int amount = kind == BattleCast::EffectKind::Slash
+                                   ? (damage > 0 ? damage : enemyBlock > combat.getEnemy().getBlock() ? 0 : -1)
+                                   : kind == BattleCast::EffectKind::Guard ? blockGain : -1;
+            activeBursts_.push_back({anim.targetPos, 0.0f, 0.42f, kind, amount});
+            if (damage > 0 && kind != BattleCast::EffectKind::Slash)
+                activeBursts_.push_back({enemyFocusPoint(), 0.0f, 0.42f, BattleCast::EffectKind::Slash, damage});
+            if (blockGain > 0 && kind != BattleCast::EffectKind::Guard)
+                activeBursts_.push_back({playerFocusPoint(), 0.0f, 0.42f, BattleCast::EffectKind::Guard, blockGain});
+            playCardSound(anim.card);
         }
     }
 
     activePlays_.erase(
         std::remove_if(activePlays_.begin(), activePlays_.end(),
-                       [](const PlayAnim& anim) { return anim.finished; }),
+                       [](const PlayAnim& anim) { return anim.elapsed >= BattleCast::kFinishSeconds; }),
         activePlays_.end());
-
-    for (HitBurst& burst : activeBursts_)
-    {
-        burst.progress = std::min(1.0f, burst.progress + deltaSeconds / burst.duration);
-    }
 
     activeBursts_.erase(
         std::remove_if(activeBursts_.begin(), activeBursts_.end(),
@@ -609,57 +637,22 @@ void BattleView::updateDamageFlashes(float deltaSeconds, const CombatSystem& com
 
     if (healthSnapshotValid_)
     {
-        // 卡牌伤害由飞行动画落到目标时才触发闪烁，其余直接伤害立即闪烁。
+        // 结算已在动画命中点发生，血条、音效与受击白闪使用同一帧状态。
         if (playerHealth < lastPlayerHealth_)
         {
-            if (hasPlayAnimTargeting(BattleTargetKind::Self))
-            {
-                playerFlashPending_ = true;
-            }
-            else
-            {
-                playerFlashTimer_ = kHitFlashDurationSeconds;
-            }
+            playerFlashTimer_ = kHitFlashDurationSeconds;
+            activeBursts_.push_back({playerFocusPoint(), 0.0f, 0.42f,
+                                    BattleCast::EffectKind::Slash, lastPlayerHealth_ - playerHealth});
         }
         if (enemyHealth < lastEnemyHealth_)
         {
-            if (hasPlayAnimTargeting(BattleTargetKind::Enemy))
-            {
-                enemyFlashPending_ = true;
-            }
-            else
-            {
-                enemyFlashTimer_ = kHitFlashDurationSeconds;
-            }
+            enemyFlashTimer_ = kHitFlashDurationSeconds;
         }
     }
 
     lastPlayerHealth_ = playerHealth;
     lastEnemyHealth_ = enemyHealth;
     healthSnapshotValid_ = true;
-}
-
-bool BattleView::hasPlayAnimTargeting(BattleTargetKind targetKind) const
-{
-    return std::any_of(activePlays_.begin(), activePlays_.end(),
-                       [targetKind](const PlayAnim& anim)
-                       {
-                           return !anim.finished && anim.targetKind == targetKind;
-                       });
-}
-
-void BattleView::resolvePendingFlash(BattleTargetKind targetKind)
-{
-    if (targetKind == BattleTargetKind::Enemy && enemyFlashPending_)
-    {
-        enemyFlashTimer_ = kHitFlashDurationSeconds;
-        enemyFlashPending_ = false;
-    }
-    else if (targetKind == BattleTargetKind::Self && playerFlashPending_)
-    {
-        playerFlashTimer_ = kHitFlashDurationSeconds;
-        playerFlashPending_ = false;
-    }
 }
 
 float BattleView::hitFlashAlpha(float timer) const
@@ -669,12 +662,8 @@ float BattleView::hitFlashAlpha(float timer) const
         return 0.0f;
     }
 
-    // 从撞击瞬间起以方波闪烁若干次，并随时间整体淡出。
-    const float progress = 1.0f - timer / kHitFlashDurationSeconds;
-    const float fade = 1.0f - progress;
-    const float phase = progress * kHitFlashBlinkCount;
-    const float blink = std::fmod(phase, 1.0f) < 0.5f ? 1.0f : 0.0f;
-    return std::clamp(blink * fade, 0.0f, 1.0f);
+    const float remaining = std::clamp(timer / kHitFlashDurationSeconds, 0.0f, 1.0f);
+    return remaining * remaining;
 }
 
 void BattleView::loadHitFlashShader()
@@ -791,7 +780,7 @@ void BattleView::updateHoverPanel(const Card& card, const sf::FloatRect& bounds)
     hoverNameText_->setPosition({hoverPanelPosition_.x + kSidePadding,
                                  hoverPanelPosition_.y + kTopPadding});
 
-    hoverTypeText_->setString(UiHelpers::toSfString("类型 " + cardTypeLabel(card.type)));
+    hoverTypeText_->setString(UiHelpers::toSfString("类型 " + CardPresentation::typeLabel(card)));
     hoverTypeText_->setPosition({hoverPanelPosition_.x + kSidePadding,
                                  hoverPanelPosition_.y + 40.0f});
 
@@ -832,21 +821,6 @@ void BattleView::playEndTurnSound()
 
     endTurnSound_.stop();
     endTurnSound_.play();
-}
-
-std::string BattleView::cardTypeLabel(CardType type) const
-{
-    switch (type)
-    {
-    case CardType::Attack:
-        return "攻击";
-    case CardType::Skill:
-        return "技能";
-    case CardType::Power:
-        return "能力";
-    }
-
-    return "未知";
 }
 
 sf::FloatRect BattleView::getSelectionTargetBounds(BattleTargetKind targetKind) const
@@ -1003,6 +977,30 @@ void BattleView::drawTargetHighlight(sf::RenderTarget& target) const
 void BattleView::drawTargetSelectionOverlay(sf::RenderWindow& window) const
 {
     drawTargetHighlight(window);
+    const sf::Vector2f start = selectedCard_.bounds.position + sf::Vector2f{80.0f, -20.0f};
+    const sf::Vector2f end = selectedTargetHovered_ ? getTargetFocusPoint(selectedCard_.targetKind)
+                                                   : mousePosition_;
+    const sf::Vector2f control{start.x, std::min(start.y, end.y) - 130.0f};
+    const sf::Color color = selectedTargetHovered_ ? sf::Color(255, 106, 82, 230)
+                                                  : sf::Color(241, 214, 149, 210);
+    for (int i = 1; i < 24; ++i)
+    {
+        const float t = static_cast<float>(i) / 24.0f;
+        const sf::Vector2f point = (1.0f - t) * (1.0f - t) * start +
+                                    2.0f * (1.0f - t) * t * control + t * t * end;
+        sf::CircleShape dot(2.0f + 2.0f * t, 12);
+        dot.setOrigin({dot.getRadius(), dot.getRadius()});
+        dot.setPosition(point);
+        dot.setFillColor(color);
+        window.draw(dot);
+    }
+    const sf::Vector2f tangent = end - control;
+    sf::CircleShape arrow(12.0f, 3);
+    arrow.setOrigin({12.0f, 12.0f});
+    arrow.setPosition(end);
+    arrow.setRotation(sf::degrees(std::atan2(tangent.y, tangent.x) * 180.0f / 3.14159265f + 90.0f));
+    arrow.setFillColor(color);
+    window.draw(arrow);
 }
 
 void BattleView::loadCardSounds()
@@ -1073,8 +1071,29 @@ void BattleView::draw(sf::RenderWindow& window, const CombatSystem& combat) cons
         window.draw(background);
     }
 
+    // 仅角色后坐，HUD 与手牌保持固定，避免打断下一次点击。
+    const sf::View originalView = window.getView();
+    auto recoilView = [&](float timer, float direction)
+    {
+        sf::View view = originalView;
+        const float t = 1.0f - std::clamp(timer / kHitFlashDurationSeconds, 0.0f, 1.0f);
+        view.move({-direction * std::sin(t * 3.14159265f) * (1.0f - t) * 22.0f, 0.0f});
+        window.setView(view);
+    };
+    recoilView(playerFlashTimer_, -1.0f);
+    for (auto it = activePlays_.rbegin(); it != activePlays_.rend(); ++it)
+    {
+        if (it->card.type != CardType::Attack || it->elapsed >= 0.26f) continue;
+        const float t = it->elapsed / 0.26f;
+        sf::View attackView = window.getView();
+        attackView.move({-18.0f * std::sin(t * 3.14159265f), 0.0f});
+        window.setView(attackView);
+        break;
+    }
     drawPlayerVisual(window);
+    recoilView(enemyFlashTimer_, 1.0f);
     drawEnemyVisual(window, combat.getEnemy());
+    window.setView(originalView);
 
     drawPlayerPanel(window, combat.getPlayer());
     drawEnemyPanel(window, combat.getEnemy(), combat.getEnemyIntentDamage());
@@ -1338,6 +1357,8 @@ void BattleView::drawHand(sf::RenderWindow& window, const std::vector<Card>& han
 
     for (const BattleHover::HandCardLayout& layout : layouts)
     {
+        if (std::any_of(activePlays_.begin(), activePlays_.end(), [&](const PlayAnim& anim)
+            { return !anim.committed && anim.handIndex == layout.handIndex; })) continue;
         if ((hoveredCard_.active && layout.handIndex == hoveredCard_.handIndex) ||
             (fadingCard_.active && layout.handIndex == fadingCard_.handIndex) ||
             (selectedCard_.active && layout.handIndex == selectedCard_.handIndex))
@@ -1378,56 +1399,113 @@ void BattleView::drawHand(sf::RenderWindow& window, const std::vector<Card>& han
 
 void BattleView::drawPlayAnim(sf::RenderTarget& target, const PlayAnim& anim) const
 {
-    const float eased = BattleCast::easeInOutQuad(anim.progress);
-    const sf::Vector2f center = BattleCast::lerp(anim.startPos + sf::Vector2f{80.0f, 110.0f},
-                                                 anim.targetPos, eased);
-    const float arc = std::sin(anim.progress * 3.14159265f) * kPlayArcHeight;
-    const sf::Vector2f offset{0.0f, -arc};
-    const float scale = 1.0f + (kPlayScaleEnd - 1.0f) * eased;
-    const float rotation = anim.rotationStart + (anim.rotationEnd - anim.rotationStart) * eased;
-    const sf::Vector2f topLeft{center.x + offset.x - CardView::getCardSize().x * scale / 2.0f,
-                               center.y + offset.y - CardView::getCardSize().y * scale / 2.0f};
+    const auto pose = BattleCast::samplePose(anim.elapsed, anim.startPos + sf::Vector2f{80.0f, 110.0f},
+                                             anim.startScale, anim.exit);
+    sf::Sprite sprite(anim.texture->getTexture());
+    sprite.setOrigin({80.0f, 110.0f});
+    sprite.setPosition(pose.center);
+    sprite.setScale({pose.scale, pose.scale});
+    sprite.setRotation(sf::degrees(pose.rotation));
+    sprite.setColor(sf::Color(255, 255, 255, static_cast<std::uint8_t>(255.0f * pose.opacity)));
+    target.draw(sprite);
 
-    drawShadow(target, {center.x + offset.x, center.y + offset.y + 20.0f},
-               {CardView::getCardSize().x * (0.46f + 0.06f * eased),
-                CardView::getCardSize().y * (0.09f + 0.04f * eased)},
-               static_cast<std::uint8_t>(86.0f + 42.0f * eased));
-    drawHandCard(target, anim.card, topLeft, scale, rotation);
+    if (anim.exit != BattleCast::ExitKind::Discard && anim.elapsed > BattleCast::kReleaseSeconds)
+    {
+        const float t = (anim.elapsed - BattleCast::kReleaseSeconds) /
+                        (BattleCast::kFinishSeconds - BattleCast::kReleaseSeconds);
+        for (int i = 0; i < 18; ++i)
+        {
+            const float x = static_cast<float>((i * 47) % 137) - 68.0f;
+            const float y = static_cast<float>((i * 71) % 179) - 89.0f;
+            sf::RectangleShape ember({3.0f + 3.0f * (1.0f - t), 6.0f});
+            ember.setPosition(pose.center + sf::Vector2f{x * (0.8f + t), y - t * (25.0f + i * 3.0f)});
+            ember.setFillColor(anim.exit == BattleCast::ExitKind::Power
+                                  ? sf::Color(255, 222, 122, static_cast<std::uint8_t>(220.0f * pose.opacity))
+                                  : sf::Color(247, 118, 60, static_cast<std::uint8_t>(220.0f * pose.opacity)));
+            target.draw(ember);
+        }
+    }
 }
 
 void BattleView::drawHitBurst(sf::RenderTarget& target, const HitBurst& burst) const
 {
-    const float eased = BattleCast::easeInOutQuad(burst.progress);
-    const float fade = 1.0f - eased;
-
-    sf::CircleShape flash(20.0f + 26.0f * eased, 40);
-    flash.setOrigin({flash.getRadius(), flash.getRadius()});
-    flash.setPosition(burst.position);
-    flash.setFillColor(sf::Color(255, 248, 225, static_cast<std::uint8_t>(170.0f * fade)));
-    target.draw(flash);
-
-    sf::CircleShape ring(28.0f + 44.0f * eased, 40);
-    ring.setOrigin({ring.getRadius(), ring.getRadius()});
-    ring.setPosition(burst.position);
-    ring.setFillColor(sf::Color::Transparent);
-    ring.setOutlineColor(sf::Color(255, 240, 180, static_cast<std::uint8_t>(200.0f * fade)));
-    ring.setOutlineThickness(4.0f);
-    target.draw(ring);
-
-    static constexpr std::array<sf::Vector2f, 6> directions = {
-        sf::Vector2f{1.0f, 0.0f}, sf::Vector2f{0.5f, 0.87f}, sf::Vector2f{-0.5f, 0.87f},
-        sf::Vector2f{-1.0f, 0.0f}, sf::Vector2f{-0.5f, -0.87f}, sf::Vector2f{0.5f, -0.87f},
-    };
-
-    for (std::size_t index = 0; index < directions.size(); ++index)
+    const float eased = BattleHover::easeOutCubic(burst.progress);
+    const float fade = 1.0f - burst.progress;
+    const auto alpha = static_cast<std::uint8_t>(235.0f * fade * fade);
+    const bool slash = burst.kind == BattleCast::EffectKind::Slash;
+    const bool guard = burst.kind == BattleCast::EffectKind::Guard;
+    sf::Color color = slash ? sf::Color(255, 203, 148, alpha) :
+                      guard ? sf::Color(126, 213, 255, alpha) :
+                      burst.kind == BattleCast::EffectKind::Debuff ? sf::Color(193, 133, 235, alpha) :
+                      sf::Color(255, 223, 126, alpha);
+    if (slash)
     {
-        sf::RectangleShape shard({18.0f, 3.0f});
-        shard.setOrigin({9.0f, 1.5f});
-        shard.setPosition({burst.position.x + directions[index].x * (16.0f + 26.0f * eased),
-                           burst.position.y + directions[index].y * (16.0f + 26.0f * eased)});
-        shard.setRotation(sf::degrees(std::atan2(directions[index].y, directions[index].x)));
-        shard.setFillColor(sf::Color(255, 220, 140, static_cast<std::uint8_t>(150.0f * fade)));
-        target.draw(shard);
+        for (int i = 0; i < 3; ++i)
+        {
+            sf::ConvexShape cut(4);
+            const float length = 65.0f + 75.0f * eased;
+            const float width = (12.0f - i * 3.0f) * fade;
+            cut.setPoint(0, {-length, 0.0f});
+            cut.setPoint(1, {10.0f, -width});
+            cut.setPoint(2, {length, 0.0f});
+            cut.setPoint(3, {-10.0f, width});
+            cut.setPosition(burst.position + sf::Vector2f{static_cast<float>(i * 13 - 13), 0.0f});
+            cut.setRotation(sf::degrees(-42.0f + i * 8.0f));
+            cut.setFillColor(i == 0 ? sf::Color(255, 250, 228, alpha) : color);
+            target.draw(cut);
+        }
+    }
+    else if (guard)
+    {
+        sf::ConvexShape shield(6);
+        shield.setPoint(0, {-48.0f, -57.0f});
+        shield.setPoint(1, {0.0f, -70.0f});
+        shield.setPoint(2, {48.0f, -57.0f});
+        shield.setPoint(3, {42.0f, 13.0f});
+        shield.setPoint(4, {0.0f, 58.0f});
+        shield.setPoint(5, {-42.0f, 13.0f});
+        shield.setPosition(burst.position);
+        shield.setScale({0.8f + 0.3f * eased, 0.8f + 0.3f * eased});
+        shield.setFillColor(sf::Color(70, 150, 220, static_cast<std::uint8_t>(55.0f * fade)));
+        shield.setOutlineColor(color);
+        shield.setOutlineThickness(4.0f * fade);
+        target.draw(shield);
+    }
+    else
+    {
+        sf::CircleShape ring(38.0f + 48.0f * eased, 48);
+        ring.setOrigin({ring.getRadius(), ring.getRadius()});
+        ring.setPosition(burst.position);
+        ring.setScale({1.0f, burst.kind == BattleCast::EffectKind::Power ? 0.4f : 1.0f});
+        ring.setFillColor(sf::Color::Transparent);
+        ring.setOutlineColor(color);
+        ring.setOutlineThickness(4.0f * fade);
+        target.draw(ring);
+    }
+    for (int i = 0; i < 9; ++i)
+    {
+        const float angle = static_cast<float>(i) * 2.39996f;
+        const float distance = 22.0f + (28.0f + (i % 3) * 14.0f) * eased;
+        sf::RectangleShape spark({slash ? 15.0f * fade : 4.0f, 3.0f});
+        spark.setPosition(burst.position + sf::Vector2f{std::cos(angle) * distance,
+                                                       std::sin(angle) * distance - (slash ? 0.0f : eased * 35.0f)});
+        spark.setRotation(sf::degrees(angle * 180.0f / 3.14159265f));
+        spark.setFillColor(color);
+        target.draw(spark);
+    }
+    if (font_ != nullptr && burst.amount >= 0 && (burst.amount > 0 || guard || slash))
+    {
+        const std::string label = burst.amount > 0 ? (guard ? "+" : "") + std::to_string(burst.amount)
+                                                   : slash ? "格挡" : "";
+        auto number = UiHelpers::makeText(*font_, label, 34, sf::Color(color.r, color.g, color.b,
+                                       static_cast<std::uint8_t>(255.0f * fade)));
+        number.setStyle(sf::Text::Bold);
+        number.setOutlineThickness(2.0f);
+        number.setOutlineColor(sf::Color(26, 20, 24, static_cast<std::uint8_t>(255.0f * fade)));
+        const auto bounds = number.getLocalBounds();
+        number.setOrigin({bounds.position.x + bounds.size.x / 2.0f, bounds.position.y + bounds.size.y / 2.0f});
+        number.setPosition(burst.position + sf::Vector2f{0.0f, -70.0f - 48.0f * eased});
+        target.draw(number);
     }
 }
 

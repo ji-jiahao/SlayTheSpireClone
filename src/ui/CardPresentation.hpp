@@ -4,6 +4,19 @@
 
 namespace CardPresentation
 {
+inline std::string typeLabel(const Card& card)
+{
+    if (card.rarity == CardRarity::Status) return "状态";
+    if (card.rarity == CardRarity::Curse) return "诅咒";
+    switch (card.type)
+    {
+    case CardType::Attack: return "攻击";
+    case CardType::Skill: return "技能";
+    case CardType::Power: return "能力";
+    }
+    return "卡牌";
+}
+
 // Display-only copies. Never feed these back into cost calculation or playCard.
 inline Card forCombat(const Card& card, const CombatSystem& combat)
 {

@@ -40,6 +40,7 @@ public:
                      int startingEnemyWeak = 0);
     bool playCard(int handIndex);
     int getPlayableCardCost(const Card& card) const;
+    bool willExhaustCard(const Card& card) const;
     void endPlayerTurn();
     void update();
 

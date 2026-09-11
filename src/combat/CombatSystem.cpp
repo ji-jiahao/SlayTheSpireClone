@@ -184,6 +184,12 @@ int CombatSystem::getPlayableCardCost(const Card& card) const
     return cost;
 }
 
+bool CombatSystem::willExhaustCard(const Card& card) const
+{
+    return card.type == CardType::Power || cardHasEffect(card, CardEffectType::Exhaust) ||
+           (corruptionActive && card.type == CardType::Skill);
+}
+
 bool CombatSystem::playCard(int handIndex)
 {
     if (result != BattleResult::Active || hasPendingDiscardChoice() || handIndex < 0 ||
@@ -212,10 +218,7 @@ bool CombatSystem::playCard(int handIndex)
 
     lastSpentEnergy = cost;
     resolvingDiscardIndex = -1;
-    const bool exhaustPlayedCard =
-        card.type == CardType::Power ||
-        cardHasEffect(card, CardEffectType::Exhaust) ||
-        (corruptionActive && card.type == CardType::Skill);
+    const bool exhaustPlayedCard = willExhaustCard(card);
     if (exhaustPlayedCard)
     {
         deck.exhaustCard(index);
@@ -1239,6 +1242,9 @@ bool CombatSystem::enemyIsAttacking() const
 
 Card CombatSystem::createStatusCard(const std::string& statusId) const
 {
+    // 放入哪个牌堆由调用方处理；目的地后缀不属于牌面资源 ID。
+    if (statusId == "wound_to_hand") return makeStatusCard("wound");
+    if (statusId == "dazed_to_draw") return makeStatusCard("dazed");
     return makeStatusCard(statusId);
 }
 

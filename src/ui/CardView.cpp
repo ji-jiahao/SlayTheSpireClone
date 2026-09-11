@@ -159,7 +159,7 @@ void CardView::draw(sf::RenderTarget& target, const Card& card) const
         sprite.setRotation(sf::degrees(rotation_));
         target.draw(sprite);
 
-        // Cover only the printed orb; artwork and cost share the same transform.
+        // 数值与负面牌说明使用实际卡牌数据，随牌面共同缩放和旋转。
         if (font_ != nullptr)
         {
             sf::RenderStates states;
@@ -188,6 +188,38 @@ void CardView::draw(sf::RenderTarget& target, const Card& card) const
             costText.setPosition(circle.getPosition() - sf::Vector2f{bounds.position.x + bounds.size.x / 2.0f,
                                                                        bounds.position.y + bounds.size.y / 2.0f});
             target.draw(costText, states);
+
+            if (card.rarity == CardRarity::Status || card.rarity == CardRarity::Curse)
+            {
+                // 保留用户提供的像素插画与卡框，覆盖生成图片中固化或误写的规则文字。
+                sf::RectangleShape paper({110.0f, 36.0f});
+                paper.setPosition({25.0f, 151.0f});
+                paper.setFillColor(sf::Color(249, 236, 202));
+                target.draw(paper, states);
+                const auto lines = UiHelpers::wrapText(*font_, card.description, 10, 106.0f);
+                float y = 169.0f - static_cast<float>(lines.size()) * 6.0f;
+                for (const auto& line : lines)
+                {
+                    auto text = UiHelpers::makeText(*font_, line, 10, sf::Color(40, 32, 26));
+                    const auto bounds = text.getLocalBounds();
+                    text.setPosition({80.0f - bounds.position.x - bounds.size.x / 2.0f, y});
+                    target.draw(text, states);
+                    y += 12.0f;
+                }
+                sf::RectangleShape plaque({106.0f, 14.0f});
+                plaque.setPosition({27.0f, 194.0f});
+                plaque.setFillColor(sf::Color(63, 43, 39));
+                plaque.setOutlineThickness(0.5f);
+                plaque.setOutlineColor(sf::Color(239, 211, 152));
+                target.draw(plaque, states);
+                auto label = UiHelpers::makeText(*font_, CardPresentation::typeLabel(card), 11,
+                                                sf::Color(255, 243, 208));
+                label.setStyle(sf::Text::Bold);
+                const auto bounds = label.getLocalBounds();
+                label.setPosition({80.0f - bounds.position.x - bounds.size.x / 2.0f,
+                                   201.0f - bounds.position.y - bounds.size.y / 2.0f});
+                target.draw(label, states);
+            }
         }
         return;
     }
