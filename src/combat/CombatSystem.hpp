@@ -37,7 +37,7 @@ public:
                      const EncounterDefinition& encounter, int startingBlock,
                      int startingStrength, int startingEnergy = 0,
                      int extraDrawCards = 0, int maxHealth = 80,
-                     int startingEnemyWeak = 0);
+                     int startingEnemyWeak = 0, int startingDexterity = 0);
     bool playCard(int handIndex);
     int getPlayableCardCost(const Card& card) const;
     bool willExhaustCard(const Card& card) const;

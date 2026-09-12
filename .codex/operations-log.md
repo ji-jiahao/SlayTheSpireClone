@@ -1172,3 +1172,35 @@
 - Debug、Release 全套 CTest 各 8/8 通过；最终截图测试再次通过；五张运行目录资源校验一致。
 - 综合评分 92，建议通过，详见 verification-report.md。
 - 额外格式检查曾临时关闭 core.autocrlf，导致 Windows CRLF 被错误报告为尾随空白；已撤销该单次命令参数，按项目原 Git 配置重新检查。没有为此改写用户历史文件的换行格式。
+
+## 编码前检查 - 复活音乐替换
+时间：2026-09-12 16:30:45
+已查阅 context-summary-revival-music.md；复用既有资源路径、复活播放逻辑和构建资源布局。仅替换用户指定音频，不改变代码。验证使用本地 PyAV 完整解码及 SHA-256 比对。
+
+## 编码后声明 - 复活音乐替换
+已复用原音乐路径与播放调用，目标 MP3 替换并同步 Debug/Release，完整音频解码和四文件哈希验证通过。无新代码和重复实现；审查结论通过。
+
+## 编码前检查 - 塔底祝福（2026-09-13）
+已查阅 context-summary-tower-bottom.md，确认复用 UiHelpers、CardDatabase、GameState、CombatSystem 和 CMake/CTest；沿用四空格与既有 C++ 命名。已检索三个现有视图/状态模式，项目没有开局三选一功能。指定辅助工具未提供，采用本地检索、计划文档和自动测试补偿。验收与集成点已记录，开始实施。
+
+## 编码后声明 - 塔底祝福（2026-09-13 01:21）
+- 复用 UiHelpers 按钮、自动换行与字体，事件原背景；TowerBottomView 只负责展示和命中，TowerBottomSystem 负责三选一及房间结算，Game 负责流程接线。
+- 与 EventView 一样采用背景等比铺满、人物及右侧气泡；与 RestSystem/ShopSystem 一样通过 GameState 修改局内状态；与现有战斗开局力量一致，在初始快照前加入敏捷。
+- 用户追加的音乐要求已采用 kMapMusicPath（exordium.mp3）。人物 GIF 转为透明帧图，保留全部 12 帧及 690 毫秒循环，无运行时新依赖。
+- 资源检查最初发现第五帧为 30 毫秒，修正原先统一 60 毫秒的假设后转换成功；新增截图测试首次编译出现 SFML Texture 花括号重载歧义，改成显式 sf::Vector2u 后通过。未连续三次失败。
+- Debug 与 Release 均完成构建，CTest 各 9/9 通过；隐藏窗口截图已逐张检查，标题居中、人物透明、气泡与按钮对齐且文字无溢出。资源与两份运行目录 SHA-256 一致。
+- 不重复实现卡池、按钮、生命上限或战斗属性机制；新增祝福逻辑没有现有等价模块。未改动用户其他未提交文件，保留之前音乐替换。
+
+## 编码前检查 - 怪物遭遇随机化（2026-09-13）
+已查阅 context-summary-encounter-randomization.md。复用 MapNode 分派、EncounterDefinition、std::shuffle 和现有运行时 require 测试；保持 C++17 与既有命名格式。已核对普通怪四种、精英仅乐加维林，史莱姆老大及分裂形态不加入普通池。移除原 Game 内的重复选择实现，抽出可独立测试的映射。工具缺失与替代流程已记录。
+
+## 编码后声明 - 怪物遭遇随机化（2026-09-13 01:33）
+复用了标准库洗牌（与 ShopSystem 一致）、地图种子重载（与 MapGenerator 一致）、胜利处理去重（Game 的 handledResult）及现有 MapTests。删除 Game 的旧内联怪池；MapEncounter 为唯一遭遇定义，精英仅乐加维林，普通四种全池轮转，Boss 保持贝利亚。GameState 完成计数与重置保持既有约定，新局种子同时驱动地图和遭遇。128 个种子验证顺序、覆盖及节点隔离，原 2000 张地图结构验证继续通过。Debug/Release 全套各 9/9 通过，测试职责整理后单独重跑 Debug MapTests 通过；git diff --check 通过。未出现构建或测试失败，未新增依赖、脚本或远程验证。
+
+## 编码前检查 - 中文发行与上传（2026-09-13）
+已查阅 context-summary-github-package.md，确认 CMake 输出命名、既有资源复制和窗口标题三个集成模式。使用 OUTPUT_NAME 保留既有目标引用，沿用 UiHelpers::toSfString 处理中文，使用本地 Release/CTest 验证；用户明确授权打包及上传 GitHub。
+
+## 编码后声明 - 中文发行与上传（2026-09-13）
+程序 OUTPUT_NAME 和 README 改为东南苦行塔，各场景窗口标题统一采用 UiHelpers::toSfString。复用 CMake 构建及资源复制，没有引入新打包框架。批量标题补丁首次因重复行顺序匹配失败，按源码顺序修正后成功，未造成部分修改。Release 构建和 9/9 测试通过。
+发行目录 dist/东南苦行塔 包含程序、SFML、x64 VC 运行库及完整 assets；历史包保留。首次 WaitForInputIdle 探针不适用于该控制台子系统程序，改用重定向输出的进程存活与窗口标题检查，运行四秒后标题为“东南苦行塔 - 主菜单”、标准错误为空，随后关闭本次测试进程。
+压缩包为 dist/东南苦行塔.zip，214211180 字节。246 个压缩文件逐项 SHA-256 比对成功，230 个资源与源 assets 一致。仅将本轮及前序已完成游戏改动和相关验证文档提交到已确认的 origin/main，不包含无关 output/tmp/报告素材及历史包。远程结果在提交推送后核对。

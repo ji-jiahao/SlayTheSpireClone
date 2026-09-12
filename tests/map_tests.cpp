@@ -1,10 +1,13 @@
 #include "map/MapGenerator.hpp"
+#include "map/MapEncounter.hpp"
+#include "core/GameState.hpp"
 
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <set>
 #include <vector>
 
 namespace
@@ -207,12 +210,72 @@ void verifyGeneratedMap(const std::vector<MapNode>& nodes)
         verifyPathComposition(*startNode, nodeLookup, 0, 0, 0);
     }
 }
+void verifyEncounterRandomization()
+{
+    const std::set<std::string> ordinaryIds = {"cultist", "jaw_worm", "acid_slime", "fungi_beast"};
+    std::set<std::string> sequences;
+    std::set<std::string> openingIds;
+    for (unsigned int seed = 0; seed < 128; ++seed)
+    {
+        std::string previousId;
+        std::string sequence;
+        for (unsigned int cycle = 0; cycle < 3; ++cycle)
+        {
+            std::set<std::string> encountered;
+            for (unsigned int offset = 0; offset < 4; ++offset)
+            {
+                const unsigned int progress = cycle * 4 + offset;
+                const MapNode node{static_cast<int>(progress), static_cast<int>(offset), 0,
+                                   MapNodeType::Battle, {}};
+                const auto encounter = MapEncounter::forNode(node, seed, progress);
+                require(ordinaryIds.count(encounter.enemyId) == 1,
+                        "普通战斗不得出现精英、Boss 或分裂形态");
+                require(encounter.enemyId != previousId, "普通怪不可相邻重复，包括重新洗牌边界");
+                require(MapEncounter::forNode(node, seed, progress).enemyId == encounter.enemyId,
+                        "相同种子和进度必须复现同一遭遇");
+                encountered.insert(encounter.enemyId);
+                previousId = encounter.enemyId;
+                if (cycle == 0) sequence += encounter.enemyId + ",";
+                if (progress == 0) openingIds.insert(encounter.enemyId);
+            }
+            require(encountered == ordinaryIds, "每四场普通战斗必须覆盖全部普通怪");
+        }
+        sequences.insert(sequence);
+        const auto nodes = MapGenerator{}.generateMap(9, seed);
+        for (const auto& node : nodes)
+        {
+            if (node.type == MapNodeType::Elite)
+                require(MapEncounter::forNode(node, seed, 0).enemyId == "lagavulin",
+                        "精英只能是乐加维林");
+            else if (node.type == MapNodeType::Boss)
+                require(MapEncounter::forNode(node, seed, 0).enemyId == "belial",
+                        "最终Boss必须保持贝利亚");
+            else if (node.type == MapNodeType::Battle)
+                require(ordinaryIds.count(MapEncounter::forNode(node, seed, 0).enemyId) == 1,
+                        "真实地图的普通节点不得越池");
+            else
+            {
+                bool rejected = false;
+                try { MapEncounter::forNode(node, seed, 0); }
+                catch (const std::invalid_argument&) { rejected = true; }
+                require(rejected, "非战斗节点必须拒绝创建遭遇");
+            }
+        }
+    }
+    require(openingIds == ordinaryIds, "全部普通怪都必须有机会在第一场出现");
+    require(sequences.size() > 12, "新种子必须带来多种怪物顺序");
+    GameState state;
+    state.completedOrdinaryBattles = 3;
+    state.reset();
+    require(state.completedOrdinaryBattles == 0, "新局必须重置普通战斗进度");
+}
 } // namespace
 
 int main()
 {
     try
     {
+        verifyEncounterRandomization();
         MapGenerator generator;
         require(generator.generateMap(0).empty(), "0 层地图应为空");
         int earlyServiceCount = 0;

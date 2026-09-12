@@ -13,9 +13,14 @@ struct GameState
     int maxHealth = 80;
     int gold = 0;
     int battleStartStrength = 0;
+    int battleStartDexterity = 0;
+    int roomClearHealing = 0;
+    int lastCompletedNodeId = -1;
+    bool towerBlessingChosen = false;
     int battleStartEnemyWeak = 0;
     int currentNodeId = -1;
     unsigned int seed = 20260901;
+    unsigned int completedOrdinaryBattles = 0;
     std::vector<CardInstance> deck;
     std::vector<std::string> relicIds{"burning_blood"};
     std::vector<std::string> potionIds;
@@ -32,8 +37,13 @@ struct GameState
         maxHealth = 80;
         gold = 0;
         battleStartStrength = 0;
+        battleStartDexterity = 0;
+        roomClearHealing = 0;
+        lastCompletedNodeId = -1;
+        towerBlessingChosen = false;
         battleStartEnemyWeak = 0;
         currentNodeId = -1;
+        completedOrdinaryBattles = 0;
         deck.clear();
         for (int index = 0; index < 5; ++index)
         {

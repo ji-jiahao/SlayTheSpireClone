@@ -2,6 +2,8 @@
 
 #include "card/CardDatabase.hpp"
 #include "map/MapGenerator.hpp"
+#include "map/MapEncounter.hpp"
+#include "room/TowerBottomSystem.hpp"
 #include "ui/CardView.hpp"
 #include "ui/MapIcons.hpp"
 #include "ui/UiHelpers.hpp"
@@ -198,48 +200,10 @@ std::optional<MapNode> findNodeById(const std::vector<MapNode>& nodes, int nodeI
     return *it;
 }
 
-EncounterDefinition encounterForMapNode(const MapNode& node, unsigned int runSeed)
-{
-    if (node.type == MapNodeType::Boss)
-    {
-        return {"黑暗奥特曼 贝利亚", 230, 35, "belial"};
-    }
-
-    if (node.type == MapNodeType::Elite)
-    {
-        return {"乐加维林", 90, 18, "lagavulin"};
-    }
-
-    // 普通战斗按地图层数扩展敌人池，使用节点 ID 和运行种子保证可复现但不固定。
-    static const std::array<EncounterDefinition, 3> earlyEncounters = {{
-        {"邪教徒", 40, 6, "cultist"},
-        {"颚虫", 42, 11, "jaw_worm"},
-        {"酸液史莱姆", 30, 10, "acid_slime"},
-    }};
-    static const std::array<EncounterDefinition, 5> laterEncounters = {{
-        {"邪教徒", 40, 6, "cultist"},
-        {"颚虫", 42, 11, "jaw_worm"},
-        {"酸液史莱姆", 30, 10, "acid_slime"},
-        {"真菌兽", 40, 6, "fungi_beast"},
-        {"乐加维林", 90, 18, "lagavulin"},
-    }};
-
-    const unsigned int mixedSeed = runSeed ^
-                                    (static_cast<unsigned int>(node.id + 1) *
-                                     2654435761u) ^
-                                    (static_cast<unsigned int>(node.row + 1) *
-                                     1013904223u);
-    if (node.row < 2)
-    {
-        return earlyEncounters[mixedSeed % earlyEncounters.size()];
-    }
-
-    return laterEncounters[mixedSeed % laterEncounters.size()];
-}
 } // namespace
 
 Game::Game()
-    : window(sf::VideoMode({kWindowWidth, kWindowHeight}), "Slay the Spire Clone"),
+    : window(sf::VideoMode({kWindowWidth, kWindowHeight}), UiHelpers::toSfString("东南苦行塔")),
       fontLoaded(false),
       eventSystem(eventDatabase),
       scene(SceneType::Menu),
@@ -363,7 +327,7 @@ Game::Game()
         std::cerr << lastError << std::endl;
     }
 
-    window.setTitle("东南苦行塔 - 主菜单");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 主菜单"));
 }
 
 void Game::run()
@@ -390,6 +354,25 @@ void Game::handleWindowEvent(const sf::Event& event)
 
     if (sceneFadeActive_)
     {
+        return;
+    }
+
+    if (scene == SceneType::TowerBottom)
+    {
+        if (const auto* mouse = event.getIf<sf::Event::MouseButtonPressed>())
+        {
+            if (mouse->button == sf::Mouse::Button::Left)
+            {
+                const int choice = towerBottomView.choiceAt(window.mapPixelToCoords(mouse->position));
+                if (choice >= 0 && TowerBottomSystem::chooseBlessing(state, choice, std::random_device{}()))
+                {
+                    showMap();
+                    statusMessage = choice == 1
+                        ? "fufu赠予了你：" + CardDatabase::createFromInstance(state.deck.back()).name
+                        : "已获得fufu的祝福。";
+                }
+            }
+        }
         return;
     }
 
@@ -657,6 +640,10 @@ void Game::handleMapMouseClick(sf::Vector2f mousePosition)
 
 void Game::update(float deltaSeconds)
 {
+    if (scene == SceneType::TowerBottom)
+    {
+        towerBottomView.update(deltaSeconds);
+    }
     if (sceneFadeActive_)
     {
         updateSceneTransition(deltaSeconds);
@@ -733,6 +720,9 @@ void Game::render()
     {
     case SceneType::Menu:
         drawMenuScene();
+        break;
+    case SceneType::TowerBottom:
+        towerBottomView.draw(window, font);
         break;
     case SceneType::Map:
         drawMapScene();
@@ -868,7 +858,14 @@ void Game::handleShopAction(const ShopAction& action)
 
 void Game::startNewRun()
 {
+    if (!towerBottomView.loadResources())
+    {
+        lastError = "无法加载塔底背景或fufu人物资源。";
+        statusMessage = lastError;
+        return;
+    }
     state.reset();
+    state.seed = std::random_device{}();
     relicSystem = RelicSystem();
     eventSystem.setDatabase(eventDatabase);
     handledResult = BattleResult::Active;
@@ -880,13 +877,14 @@ void Game::startNewRun()
     battleMusicIndex_ = 0;
 
     MapGenerator generator;
-    mapNodes = generator.generateMap(9);
+    mapNodes = generator.generateMap(9, state.seed);
     mapScrollOffset_ = getMaxMapScrollOffset();
 
-    requestSceneChange(SceneType::Map);
+    towerBottomView.reset();
+    scene = SceneType::TowerBottom;
     state.currentNodeId = -1;
     playMusic(kMapMusicPath, true);
-    window.setTitle("东南苦行塔 - 地图");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 塔底"));
 }
 
 void Game::startBattle(bool preserveRetryState)
@@ -916,14 +914,14 @@ void Game::startBattle(bool preserveRetryState)
         findNodeById(mapNodes, state.currentNodeId);
     const EncounterDefinition encounter =
         currentNode.has_value()
-            ? encounterForMapNode(*currentNode, state.seed)
+            ? MapEncounter::forNode(*currentNode, state.seed, state.completedOrdinaryBattles)
             : EncounterDefinition{};
     battleIsBelial_ = encounter.enemyId == "belial";
     combat.startBattle(state.currentHealth, state.seed, buildCombatDeck(),
                        encounter, modifiers.block,
                        modifiers.strength + state.battleStartStrength,
                        modifiers.energy, modifiers.drawCards, state.maxHealth,
-                       state.battleStartEnemyWeak);
+                       state.battleStartEnemyWeak, state.battleStartDexterity);
     const bool bossBattle = currentNode.has_value() &&
                             currentNode->type == MapNodeType::Boss;
     const char* musicPath = kBossMusicPath;
@@ -939,12 +937,12 @@ void Game::startBattle(bool preserveRetryState)
         belialIntroSound_.play();
         belialIntroTimer_ = 0.0f;
         scene = SceneType::BelialIntro;
-        window.setTitle("东南苦行塔 - 贝利亚出场");
+        window.setTitle(UiHelpers::toSfString("东南苦行塔 - 贝利亚出场"));
         return;
     }
 
     requestSceneChange(SceneType::Battle);
-    window.setTitle("Slay the Spire Clone - 战斗");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 战斗"));
 }
 
 bool Game::startEvent(const std::string& eventId)
@@ -970,7 +968,7 @@ bool Game::startEvent(const std::string& eventId)
     eventView.enterCurrentState(eventSystem);
     requestSceneChange(SceneType::Event);
     stopMusic();
-    window.setTitle("Slay the Spire Clone - 事件");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 事件"));
     return true;
 }
 
@@ -981,7 +979,7 @@ void Game::startRestRoom()
     statusMessage.clear();
     requestSceneChange(SceneType::Rest);
     playMusic(kRestMusicPath, true);
-    window.setTitle("Slay the Spire Clone - 篝火");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 篝火"));
 }
 
 void Game::startShopRoom()
@@ -993,22 +991,24 @@ void Game::startShopRoom()
     shopView.resetDialogue(state.seed ^ static_cast<unsigned int>(state.currentNodeId + 4096));
     requestSceneChange(SceneType::Shop);
     playMusic(kMerchantMusicPath, true);
-    window.setTitle("Slay the Spire Clone - 商店");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 商店"));
 }
 
 void Game::showMap()
 {
+    if (scene == SceneType::Event || scene == SceneType::Rest || scene == SceneType::Shop)
+        TowerBottomSystem::completeRoom(state);
     requestSceneChange(SceneType::Map);
     statusMessage = "已返回地图。";
     playMusic(kMapMusicPath, true);
-    window.setTitle("Slay the Spire Clone - 地图");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 地图"));
 }
 
 void Game::showGameOver()
 {
     requestSceneChange(SceneType::GameOver);
     playMusic(kFailureMusicPath, false);
-    window.setTitle("Slay the Spire Clone - 游戏结束");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 游戏结束"));
 }
 
 void Game::requestSceneChange(SceneType target)
@@ -1067,7 +1067,7 @@ void Game::finishBelialIntro()
     belialIntroSound_.stop();
     belialIntroTimer_ = 0.0f;
     scene = SceneType::Battle;
-    window.setTitle("Slay the Spire Clone - 战斗");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 战斗"));
 }
 
 void Game::startEndingSequence()
@@ -1082,7 +1082,7 @@ void Game::startEndingSequence()
     belialIntroTimer_ = 0.0f;
     scene = SceneType::Ending;
     playMusic(kEndingMusicPath, false);
-    window.setTitle("东南苦行塔 - 感谢游玩");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 感谢游玩"));
 }
 
 void Game::handleBattleResult()
@@ -1098,6 +1098,7 @@ void Game::handleBattleResult()
     {
         state.currentHealth = combat.getPlayer().getCurrentHealth();
         state.maxHealth = combat.getPlayer().getMaxHealth();
+        TowerBottomSystem::completeRoom(state);
         if (battleIsBelial_)
         {
             startEndingSequence();
@@ -1110,6 +1111,7 @@ void Game::handleBattleResult()
             findNodeById(mapNodes, state.currentNodeId);
         if (currentNode.has_value() && currentNode->type == MapNodeType::Battle)
         {
+            ++state.completedOrdinaryBattles;
             ordinaryBattleHealing = state.heal(5);
         }
         state.gainGold(50);
@@ -1173,7 +1175,7 @@ void Game::updateEndingSequence(float deltaSeconds)
     mainMenuView.resetFade();
     scene = SceneType::Menu;
     playMusic(kMenuMusicPath, true);
-    window.setTitle("东南苦行塔 - 主菜单");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 主菜单"));
 }
 
 void Game::retryCurrentBattle()
@@ -1199,7 +1201,7 @@ void Game::retryCurrentBattle()
     mainMenuView.resetFade();
     requestSceneChange(SceneType::Menu);
     playMusic(kMenuMusicPath, true);
-    window.setTitle("东南苦行塔 - 主菜单");
+    window.setTitle(UiHelpers::toSfString("东南苦行塔 - 主菜单"));
 }
 
 void Game::startBelialRevivalChoice()

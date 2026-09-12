@@ -106,7 +106,8 @@ void CombatSystem::startBattle(int currentHealth, std::uint32_t seed,
                                std::vector<Card> cards,
                                const EncounterDefinition& encounter, int startingBlock,
                                int startingStrength, int startingEnergy,
-                               int extraDrawCards, int maxHealth, int startingEnemyWeak)
+                               int extraDrawCards, int maxHealth, int startingEnemyWeak,
+                               int startingDexterity)
 {
     battleSeed = seed;
     randomEngine.seed(seed ^ 0x9e3779b9u);
@@ -154,6 +155,7 @@ void CombatSystem::startBattle(int currentHealth, std::uint32_t seed,
 
     player.gainBlock(startingBlock);
     player.applyStrength(startingStrength);
+    player.applyDexterity(startingDexterity);
     enemy.applyWeak(startingEnemyWeak);
     player.gainEnergy(startingEnergy);
     drawHand(kHandSize + static_cast<std::size_t>(std::max(0, extraDrawCards)));

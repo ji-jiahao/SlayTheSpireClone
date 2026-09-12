@@ -1,4 +1,4 @@
-# SlayTheSpireClone
+# 东南苦行塔
 
 基于 C++17、SFML 3.0.1 和 CMake 的《杀戮尖塔》第一幕铁甲战士简化复刻。
 
@@ -10,6 +10,7 @@
 
 ```text
 主菜单（开始界面背景/音乐）
+→ 塔底（fufu 动画、地图配乐、三选一祝福）
 → 9 层地图（每条路线 4 到 6 场非 Boss 战斗、至少 1 个商店，最后为 Boss）
 → 普通战斗、事件、篝火或商店
 → 返回地图
@@ -18,7 +19,7 @@
 当前真实行为：
 
 - 战斗当前仍是单敌人，但已支持通过 `EncounterDefinition.enemyId` 选择邪教徒、颚虫、酸液史莱姆、真菌兽、乐加维林和史莱姆老大等敌人原型；胜利后会获得 50 金币，并从三张候选卡牌中最多选择两张加入牌组，也可以只选一张或跳过。
-- 地图战斗入口会根据当前节点、地图层数和运行种子生成可复现的敌人遭遇：前两层从邪教徒、颚虫、酸液史莱姆中选择，后续普通战斗可加入真菌兽；每条路线恰好经过一次精英乐加维林，Boss 节点固定为 230 点生命的贝利亚。
+- 每局生成新的随机种子，普通战斗将邪教徒、颚虫、酸液史莱姆和真菌兽洗牌后依次抽取，四种用完再洗牌，避免相邻重复；只有普通战斗胜利才推进序列。同一种子与进度可复现遭遇，精英节点只出现乐加维林，Boss 节点固定为 230 点生命的贝利亚。普通战斗少于四场的路线只遇到该随机序列的前几种怪。
 - 铁甲战士初始状态为 80 HP、3 能量、5 张打击/4 张防御/1 张痛击；普通战斗胜利额外恢复 5 点生命，随后仍触发燃烧之血回血。
 - `CardDatabase` 中有 73 张可获得卡牌定义和升级数据，但运行时牌组默认只使用初始牌组；`assets/data/cards.json` 尚未被加载。
 - 地图节点实际包含普通战斗、精英、事件、篝火、商店和 Boss；没有宝箱场景，每条路线固定经过一次乐加维林精英战。
@@ -39,7 +40,7 @@
 
 - `MapGenerator::generateMap(int rowCount)`：生成整张地图的节点、行列和连线。
 - `MapNode`：保存 `id`、`row`、`column`、`type`、`nextNodeIds`。
-- `Game::startNewRun()`：开局时创建地图并把场景切到地图页。
+- `Game::startNewRun()`：开局时创建地图并进入塔底，选择祝福后进入地图。
 - `Game::handleMapMouseClick(sf::Vector2f mousePosition)`：点击地图节点，决定是否能前进。
 - `Game::isMapNodeSelectable(const MapNode& node)`：判断当前节点能否选择。
 - `Game::layoutMapNodes()`：把节点转成可点击区域和绘制位置。
@@ -237,7 +238,7 @@
 1. 克隆仓库，不要只下载或复制某个 `.cpp` 文件。
 2. 在 Visual Studio 2022 中选择“打开本地文件夹”，打开仓库根目录。
 3. 等待 CMake 配置结束。首次配置会下载约 37 MB 的 SFML，因此会稍慢。
-4. 配置选择 `windows-x64`，启动目标选择 `SlayTheSpire.exe`。
+4. 配置选择 `windows-x64`，启动目标选择 `东南苦行塔.exe`（CMake 目标名为 `SlayTheSpire`）。
 5. 按 `Ctrl+F5` 运行，或按 `F5` 调试。
 
 也可以在“开发人员 PowerShell”中构建：
@@ -280,5 +281,5 @@ git push -u origin feature/card-system
 
 - 找不到编译器：在 Visual Studio Installer 安装“使用 C++ 的桌面开发”。
 - 下载 SFML 失败：检查 Git 和 GitHub 网络，然后在 Visual Studio 中删除 CMake 缓存并重新配置。
-- 启动目标错误：选择 `SlayTheSpire.exe`，不要选择 `ALL_BUILD` 或 `ZERO_CHECK`。
+- 启动目标错误：选择 `东南苦行塔.exe`，不要选择 `ALL_BUILD` 或 `ZERO_CHECK`。
 - 图片或字体找不到：使用项目内的相对路径，例如 `assets/images/card.png`，不要写个人电脑的绝对路径。

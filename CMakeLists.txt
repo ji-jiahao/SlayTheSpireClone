@@ -65,6 +65,7 @@ target_include_directories(event_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_library(map_system STATIC
     src/map/MapNode.cpp
     src/map/MapGenerator.cpp
+    src/map/MapEncounter.cpp
 )
 
 target_include_directories(map_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -72,6 +73,7 @@ target_include_directories(map_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_library(room_system STATIC
     src/room/RestSystem.cpp
     src/room/ShopSystem.cpp
+    src/room/TowerBottomSystem.cpp
 )
 
 target_include_directories(room_system PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -89,6 +91,7 @@ add_library(ui STATIC
     src/ui/RestView.cpp
     src/ui/ShopView.cpp
     src/ui/UiHelpers.cpp
+    src/ui/TowerBottomView.cpp
 )
 
 target_include_directories(ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -105,6 +108,7 @@ add_executable(SlayTheSpire
     src/main.cpp
     src/app/Game.cpp
 )
+set_target_properties(SlayTheSpire PROPERTIES OUTPUT_NAME "东南苦行塔")
 
 target_link_libraries(SlayTheSpire PRIVATE
     combat_system
@@ -121,6 +125,11 @@ option(BUILD_TESTING "Build project tests" ON)
 enable_testing()
 
 if(BUILD_TESTING)
+    add_executable(TowerBottomTests tests/tower_bottom_tests.cpp)
+    target_link_libraries(TowerBottomTests PRIVATE room_system combat_system ui)
+    add_test(NAME TowerBottomTests COMMAND TowerBottomTests)
+    set_tests_properties(TowerBottomTests PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
     add_executable(CardTests
         tests/card_tests.cpp
     )

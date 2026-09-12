@@ -13,6 +13,7 @@
 #include "ui/MainMenuView.hpp"
 #include "ui/RestView.hpp"
 #include "ui/ShopView.hpp"
+#include "ui/TowerBottomView.hpp"
 
 #include <SFML/Audio.hpp>
 #include <SFML/Graphics.hpp>
@@ -30,6 +31,7 @@ private:
     enum class SceneType
     {
         Menu,
+        TowerBottom,
         Map,
         Event,
         Battle,
@@ -109,6 +111,7 @@ private:
     MainMenuView mainMenuView;
     RestView restView;
     ShopView shopView;
+    TowerBottomView towerBottomView;
     CombatSystem combat;
     GameState state;
     RelicSystem relicSystem;

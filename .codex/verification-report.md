@@ -1218,3 +1218,67 @@ ctest --test-dir out/build/windows-x64 -C Release --output-on-failure
 | 综合 | 92 |
 
 建议：通过。原始目标、范围、交付物和审查要点完整；五张实际负面牌无遗漏；依赖、性能与还原程度的限制已说明。审查结论与本地验证记录已留痕。
+
+## 复活音乐替换审查（2026-09-12）
+
+目标与范围：将用户指定的 F:/qq1/M500002hhWGl42uIU7.mp3 接入复活音乐原路径。交付：assets/sounds/heavy_is_the_crown.mp3，已同步本地 Debug/Release 运行目录。
+验证：PyAV 完整解码通过，307.25 秒、44100 Hz；用户源文件、仓库目标、Debug 与 Release 副本 SHA-256 全部一致（6933c1331cfa275a3bfd13ef0f37c86b7ae7b27783f5ddae9ba36ba0e05149a8）。复用现有音乐播放调用，无新依赖或源码变更。
+复现：使用 Python av.open 打开目标并遍历 decode(audio=0)，将各文件的 hashlib.sha256(read_bytes()) 相互比较。
+审查：需求覆盖完整，资源映射明确；无规则或接口变化。技术评分：质量 100、验证 95、规范 95；战略评分：需求 100、架构 100、风险 95；综合 98，建议通过。未进行 GitHub 推送或改写历史发布包。
+
+## 塔底场景与三选一祝福审查（2026-09-13 01:21）
+
+目标、范围与审查要点：Start 后进入塔底；2.4 秒金色居中标题淡入及场景渐显；沿用事件背景和地图音乐；用户 GIF 动画位于主体区域，右侧原文气泡和三个对齐选项；选择后进入地图，三项效果真实作用于当前局。
+
+交付映射：src/ui/TowerBottomView.* 为视图与交互；src/room/TowerBottomSystem.* 为祝福规则；GameState 为局内状态；Game.cpp 为开始、选项、战斗和房间完成接线；CombatSystem 为开战敏捷；assets/images/event/fufu.png 为 12 帧透明图集；tests/tower_bottom_tests.cpp 为本地自动验证；上下文与操作记录位于本项目 .codex。
+
+验证结果：Debug、Release 构建成功，CTest 各 9/9 通过。新增测试在 Release 下仍使用运行时异常检查，覆盖非法选项、重复选择、随机牌真实入组与奖励类别、50 个种子的多样性、回血上限、死亡不回血、节点去重、新局重置、连续两场开战 2 敏捷及跨回合不叠加、过渡输入锁、非法时间、全部按钮命中及资源加载。自动隐藏窗口生成 tower-title.png、tower-choice.png，已视觉检查居中标题、透明人物、文本与按钮边界。
+
+本地复现（项目根目录 PowerShell）：
+
+```powershell
+& 'D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build --preset debug
+& 'D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe' --test-dir out/build/windows-x64 -C Debug --output-on-failure
+& './out/build/windows-x64/Debug/TowerBottomTests.exe' 'F:/kill_tower/.codex/tower-bottom-captures'
+& 'D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --build --preset release
+& 'D:/c++/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe' --test-dir out/build/windows-x64 -C Release --output-on-failure
+git diff --check
+```
+
+资源：源图集、Debug/Release 副本 SHA-256 均为 B26C95BB9770A3E8231E215AC05302DFAD4FE2921AD7AC8F314B6FA5A2FCE18C。保留原 GIF 第五帧 30 毫秒，其余每帧 60 毫秒。转换工具 .codex/prepare-fufu.py 依赖提供的原始临时 GIF，仅用于再生成；运行和构建只依赖已生成 PNG。
+
+风险和边界：回血在战斗胜利、存活完成事件、离开商店/篝火时触发，额外叠加既有回复机制，每个节点只结算一次；敏捷在每场战斗初始快照前应用，非战斗房间无战斗属性结算。图集约 16.5 MiB 显存，一次加载，逐帧只切换贴图区域；随机卡遍历既有卡池一次。窗口沿用项目固定 1280×720 布局。验证为本地规则测试、渲染测试及接线审查，未自动操作完整游戏通关，也未进行声卡录音；音乐依据既有已接入播放路径核对。无存档格式迁移，回滚可撤回本轮源码与资源并重建，保留此前音频替换。
+
+工具补偿：指定分析、计划和检索工具不可用，使用上下文文档、项目实现与随附 SFML 头文件完成同序审查；具体失败与修复在 operations-log.md 留痕。没有依赖远程流水线或人工验证。
+
+技术评分：代码质量 94、测试覆盖 92、规范遵循 93。战略评分：需求匹配 96、架构一致 95、风险评估 93。综合 94，建议通过。原始要求及追加音乐要求有对应实现与证据，交付物和依赖边界明确。
+
+## 怪物遭遇随机化审查（2026-09-13 01:33）
+
+需求与范围：普通关不得出现精英，精英仅乐加维林；全部四种普通怪都有出场机会，开局和后续顺序随机。根因是后期池误含精英、局种子固定、节点哈希取模和早期池限制。原始意图与用户追加限定均已覆盖。
+
+交付：MapEncounter.hpp/.cpp 提供唯一遭遇分派与洗牌；Game.cpp 新局随机种子、按普通战斗完成数选择、胜利推进；GameState.hpp 保存及重置进度；CMakeLists.txt 集成源文件；map_tests.cpp 覆盖回归；README 更新规则。复用标准随机库、MapNode、EncounterDefinition、Game 胜利去重和既有 CTest，无额外依赖。
+
+结果：Debug/Release 构建成功，CTest 各 9/9 通过；最终 Debug MapTests 再次通过。128 个种子 × 三轮 × 四场覆盖 1536 次普通遭遇，每轮四怪齐全、相邻不重复、同种子同进度可复现；全部普通怪都能首发，多种子首轮有超过 12 种不同顺序；128 张真实地图验证普通/精英/Boss 隔离与非战斗节点拒绝；原有 2000 张地图路径约束测试通过。计数重置测试通过。Game 接线审查确认只有普通战斗胜利推进，失败、精英、事件和篝火不消耗普通序列。git diff --check 通过。
+
+复现：在项目根目录运行既有 cmake --build --preset debug、ctest --test-dir out/build/windows-x64 -C Debug --output-on-failure；再以 release/Release 重复。可使用本报告上一节记录的本机 cmake/ctest 绝对路径。独立定位命令为 ctest --test-dir out/build/windows-x64 -C Debug -R '^MapTests$' --output-on-failure。
+
+边界与风险：四场普通战斗才遍历全部四怪；仅三场普通战斗的短路线不会强行增怪。相同局进度在不同分支上选择相同序列位置，这是按玩家经历保证覆盖的设计。普通怪开局不再受层数限制。重建洗牌的时间为 O(已完成普通战斗数)，额外内存固定四个遭遇；当前九层地图至多少数轮，无性能瓶颈。没有新增存档格式；撤回本轮代码和 README 并重建可回滚，之前塔底与音频修改保留。验证为本地自动测试及接线审查，未以人工通关代替测试。
+
+工具补偿与留痕：指定辅助工具不可用，依据上下文摘要按分析、计划、执行、独立审查完成，来源与用途在摘要中记录。无连续失败，无远程流水线。
+
+技术评分：代码质量 94、测试覆盖 95、规范遵循 93。战略评分：需求匹配 97、架构一致 94、风险评估 94。综合 95，建议通过。
+
+## 中文发行包与上传前审查（2026-09-13）
+
+需求、范围与交付：上传已完成游戏改动到 origin/main（ji-jiahao/SlayTheSpireClone），生成中文命名的 Windows x64 发行包。CMake 保留内部目标、OUTPUT_NAME 为东南苦行塔；所有窗口标题使用 UTF-8 转換并统一名称。README 的启动说明同步更新。
+
+验证：Release 重新构建成功，9/9 CTest 通过。打包程序独立从发行目录启动，四秒后进程存活、窗口标题为“东南苦行塔 - 主菜单”，错误日志为空。包包含可执行程序、SFML 四个 DLL、x64 VC 运行库、230 个 assets 文件和中文游玩说明。246 个 ZIP 文件逐一 SHA-256 与发行目录匹配，全部资产再与源码目录匹配。
+
+包路径：F:/kill_tower/dist/东南苦行塔.zip；大小 214211180 字节；SHA-256：7BFA7C0FB6D0F679250F50413ABE5475C44DE5DDE14DA36AF310C2249A1E8F4F。
+
+复现：使用既有 release 构建及 Release CTest 命令；复制新可执行程序、Release/sfml-*.dll、VC/Redist/MSVC/14.44.35112/x64/Microsoft.VC143.CRT/*.dll 及 assets 至独立目录；用 System.IO.Compression.ZipFile.CreateFromDirectory 压缩；以 ZipFile.OpenRead 遍历并与磁盘文件计算 SHA-256。程序启动检查采用 Start-Process 指定发行目录和重定向日志后等待四秒，确认存活及窗口标题。首次 WaitForInputIdle 失败的原因及替代办法已记入操作日志。
+
+依赖与边界：本包支持 Windows 10/11 x64，完整解压后运行；未打包源码构建产物、测试程序或个人临时文档。远程仅推送源码和游戏资源，ZIP 留在本地交付，不创建 GitHub Release。历史发行包保留，可直接使用旧包回退；新增文件命名不改变内部 CMake 目标。
+
+技术评分：质量 95、验证 95、规范 94；战略评分：需求 96、架构 96、风险 94；综合 95，建议通过。范围与交付映射完整、依赖和风险已评估；上传授权来自用户本轮请求，提交后核对远程 SHA。
