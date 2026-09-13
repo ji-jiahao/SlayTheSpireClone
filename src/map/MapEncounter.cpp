@@ -11,7 +11,7 @@ EncounterDefinition MapEncounter::forNode(const MapNode& node, unsigned int runS
     if (node.type == MapNodeType::Elite)
         return {"乐加维林", 90, 18, "lagavulin"};
     if (node.type == MapNodeType::Boss)
-        return {"黑暗奥特曼 贝利亚", 230, 35, "belial"};
+        return {"黑暗奥特曼 贝利亚", 200, 35, "belial"};
     if (node.type != MapNodeType::Battle)
         throw std::invalid_argument("非战斗节点不能生成怪物遭遇");
 

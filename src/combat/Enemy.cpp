@@ -233,10 +233,6 @@ void Enemy::chooseBelialIntent()
 
 int Enemy::belialAttackDamage(int baseDamage) const
 {
-    if (darkCharge >= 2)
-    {
-        return (baseDamage * 13 + 9) / 10;
-    }
     return baseDamage;
 }
 
@@ -248,7 +244,6 @@ void Enemy::triggerBelialPossession()
     }
     belialPossessed = true;
     clearDebuffs();
-    strength += 2;
     block += 15;
     darkCharge = 3;
     belialForceUltimate = true;

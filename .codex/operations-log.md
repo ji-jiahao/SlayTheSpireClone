@@ -1200,6 +1200,11 @@
 ## 编码前检查 - 中文发行与上传（2026-09-13）
 已查阅 context-summary-github-package.md，确认 CMake 输出命名、既有资源复制和窗口标题三个集成模式。使用 OUTPUT_NAME 保留既有目标引用，沿用 UiHelpers::toSfString 处理中文，使用本地 Release/CTest 验证；用户明确授权打包及上传 GitHub。
 
+## 编码前检查 - 贝利亚 200 HP 与半血攻击调整（2026-09-13）
+已查阅 context-summary-belial-200.md；复用 MapEncounter/Game 的 Boss 定义、Enemy 既有阶段状态和 combat_tests 夹具。仅删除半血攻击增益并更新生命值，不改动黑暗蓄能、护盾、复活和阶段招式。
+
+编码后：MapEncounter 贝利亚改为 200 HP；Enemy 删除半血 +2 力量和 1.3 倍攻击。旧测试期望 39 点已更新为 30/48。Debug CTest 9/9 通过。
+
 ## 编码后声明 - 中文发行与上传（2026-09-13）
 程序 OUTPUT_NAME 和 README 改为东南苦行塔，各场景窗口标题统一采用 UiHelpers::toSfString。复用 CMake 构建及资源复制，没有引入新打包框架。批量标题补丁首次因重复行顺序匹配失败，按源码顺序修正后成功，未造成部分修改。Release 构建和 9/9 测试通过。
 发行目录 dist/东南苦行塔 包含程序、SFML、x64 VC 运行库及完整 assets；历史包保留。首次 WaitForInputIdle 探针不适用于该控制台子系统程序，改用重定向输出的进程存活与窗口标题检查，运行四秒后标题为“东南苦行塔 - 主菜单”、标准错误为空，随后关闭本次测试进程。
